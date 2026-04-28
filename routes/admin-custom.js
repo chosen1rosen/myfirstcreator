@@ -265,7 +265,7 @@ Try:<br>
     let pendingHtml = null;
 
     // Load initial HTML
-    ta.value = ${JSON.stringify(currentHtml)};
+    ta.value = ${JSON.stringify(currentHtml).replace(/<\/script>/gi, '<\\/script>')};
 
     // ── Code editor ───────────────────────────────────────────────────────────
     ta.addEventListener('input', () => {

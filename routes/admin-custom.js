@@ -111,20 +111,20 @@ IMPORTANT RULES FOR DYNAMIC SECTIONS:
 - Testimonials: use <section id="testimonials-section"><div id="testimonials-grid"></div></section>
 - Signup form: use <form id="signup-form"> with <input id="email"> and optionally <input id="name">
 - NEVER hardcode video URLs, testimonial names/quotes, or emails — always use the dynamic approach
-OUTPUT RULES — choose the right format for the job:
+OUTPUT FORMAT RULES — YOU MUST FOLLOW THESE EXACTLY:
 
-For SMALL changes (colors, text, font sizes, spacing, single element tweaks):
-Use <css_patch> with only the overriding CSS rules — do NOT rewrite the whole page:
+1. STYLE/COLOR/FONT/SPACING CHANGES → use <css_patch> ONLY. Never use html_update for these.
 <css_patch>
 .btn-submit { background: red !important; background-image: none !important; }
 </css_patch>
 
-For LARGE changes (new sections, layout restructure, major redesign):
-Output the full page inside <html_update>...</html_update>
+2. TEXT/COPY CHANGES TO EXISTING CONTENT → use <css_patch> with content property OR explain what to change in plain text.
 
-For advice/copy suggestions with no code: just reply with text.
+3. NEW SECTIONS / MAJOR LAYOUT CHANGES → use <html_update> with the full page HTML.
 
-IMPORTANT: Prefer css_patch for anything that is purely a style change. It applies instantly and is much faster than a full rewrite.`;
+4. ADVICE / QUESTIONS → plain text, no code tags.
+
+⚠️ STRICT RULE: If the user asks to change a color, size, font, background, border, padding, margin, or any visual style — you MUST use <css_patch>. Using <html_update> for a style-only change is a critical error. css_patch is applied instantly; html_update takes 30+ seconds.`;
 
 // ─── Custom HTML editor (3-panel layout) ─────────────────────────────────────
 
@@ -367,7 +367,7 @@ Try:<br>
         const res = await fetch('/admin/variants/${req.params.id}/custom/ai-stream', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ message: msg, history: chatHistory.slice(-8), currentHtml: ta.value })
+          body: JSON.stringify({ message: msg, history: chatHistory.slice(-8), currentHtml: chatHistory.length === 0 ? ta.value : null, styleChangeHint: /color|background|font|size|red|blue|green|white|black|bold|padding|margin|border|radius|spacing|smaller|larger|bigger|darker|lighter/i.test(msg) })
         });
 
         const reader = res.body.getReader();
@@ -556,7 +556,7 @@ Try:<br>
 // ─── Streaming AI endpoint ────────────────────────────────────────────────────
 
 router.post('/:id/custom/ai-stream', requireAuth, async (req, res) => {
-  const { message, history, currentHtml } = req.body;
+  const { message, history, currentHtml, styleChangeHint } = req.body;
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'AI not configured' });
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -567,18 +567,20 @@ router.post('/:id/custom/ai-stream', requireAuth, async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    // Prepend hard constraint for style changes
+    const userContent = currentHtml && currentHtml.trim().length > 50
+      ? `Current page HTML:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nRequest: ${message}`
+      : styleChangeHint
+        ? `⚠️ THIS IS A STYLE CHANGE. YOU MUST RESPOND WITH <css_patch> ONLY. DO NOT USE <html_update>. Request: ${message}`
+        : message;
+
     const messages = [
       ...(history || []).slice(-8),
-      {
-        role: 'user',
-        content: currentHtml && currentHtml.trim().length > 50
-          ? `Current page HTML:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nRequest: ${message}`
-          : message
-      }
+      { role: 'user', content: userContent }
     ];
 
     const stream = await client.messages.stream({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-haiku-4-5',
       max_tokens: 8000,
       system: AI_SYSTEM_PROMPT,
       messages

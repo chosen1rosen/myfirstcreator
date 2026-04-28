@@ -177,60 +177,69 @@ router.get('/rotation', requireSuper, async (req, res) => {
   const clickThresh = await getSetting('rot_click_threshold') || '500';
   const timeHours = await getSetting('rot_time_hours') || '168';
 
-  const variantOptions = (allVariants || []).map(v => {
+  // Build ordered list: sequenced first (in order), then unsequenced
+  const ordered = [
+    ...sequence.map(id => (allVariants||[]).find(v => v.id === id)).filter(Boolean),
+    ...(allVariants||[]).filter(v => !sequence.includes(v.id))
+  ];
+
+  const variantRows = ordered.map((v, i) => {
     const inRotation = sequence.includes(v.id);
     const isActive = String(v.id) === String(activeId);
     const isMine = v.owner === 'super';
-    return `<label style="display:flex;align-items:center;gap:10px;padding:10px;background:#111122;border-radius:8px;margin-bottom:8px;cursor:pointer">
-      <input type="checkbox" name="sequence" value="\${v.id}" \${inRotation ? 'checked' : ''} style="width:auto;margin:0">
-      <span>\${isMine ? '<span class="super-tag" style="margin-right:4px">MINE</span>' : ''}\${v.name}</span>
-      \${isActive ? '<span class="badge badge-green" style="margin-left:auto">LIVE</span>' : ''}
-    </label>`;
+    return `<div class="rot-item" data-id="${v.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#111122;border-radius:8px;margin-bottom:6px">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button type="button" onclick="moveItem(this,-1)" style="background:none;border:none;color:#475569;cursor:pointer;padding:0;font-size:12px;line-height:1" ${i===0?'disabled':''}>▲</button>
+        <button type="button" onclick="moveItem(this,1)" style="background:none;border:none;color:#475569;cursor:pointer;padding:0;font-size:12px;line-height:1" ${i===ordered.length-1?'disabled':''}>▼</button>
+      </div>
+      <span style="color:#475569;font-size:11px;font-weight:600;min-width:20px">${i+1}.</span>
+      <input type="checkbox" class="rot-check" data-id="${v.id}" ${inRotation ? 'checked' : ''} style="width:auto;margin:0">
+      <span style="flex:1;font-size:14px">${isMine ? '<span class="super-tag" style="margin-right:4px">MINE</span>' : ''}${v.name}</span>
+      ${isActive ? '<span class="badge badge-green">LIVE</span>' : ''}
+    </div>`;
   }).join('');
 
   res.send(layout('Rotation Control', `
-    \${msg==='saved' ? '<div class="alert-success">✅ Rotation updated.</div>' : ''}
-    <p style="font-size:13px;color:#64748b;margin-bottom:20px">
-      Add or remove variants from the live rotation — including yours. The admin only sees their own variants in their panel; yours are invisible to them but fully active on the site.
-    </p>
-    <form method="POST" action="/superadmin/rotation">
+    ${msg==='saved' ? '<div class="alert-success">✅ Rotation updated.</div>' : ''}
+    <p style="font-size:13px;color:#64748b;margin-bottom:20px">Add or remove variants. Use ▲▼ to set exact rotation order. Admin only sees their own variants.</p>
+    <form method="POST" action="/superadmin/rotation" id="rot-form">
+      <input type="hidden" name="sequence" id="sequence-input" value="">
       <div class="card" style="margin-bottom:20px">
         <div class="card-title">Rotation Mode</div>
         <div class="form-group">
           <select name="mode" id="rot-mode" onchange="toggleMode(this.value)">
-            <option value="manual" \${modeRaw==='manual'?'selected':''}>Manual — set active variant yourself</option>
-            <option value="click" \${modeRaw==='click'?'selected':''}>Click-based — rotate after X visits</option>
-            <option value="time" \${modeRaw==='time'?'selected':''}>Time-based — rotate every X hours</option>
+            <option value="manual" ${modeRaw==='manual'?'selected':''}>Manual — set active variant yourself</option>
+            <option value="click" ${modeRaw==='click'?'selected':''}>Click-based — rotate after X visits</option>
+            <option value="time" ${modeRaw==='time'?'selected':''}>Time-based — rotate every X hours</option>
           </select>
         </div>
-        <div id="click-s" style="\${modeRaw!=='click'?'display:none':''}">
-          <div class="form-group"><label>Visits before rotating</label><input type="number" name="click_threshold" value="\${clickThresh}" min="1"></div>
+        <div id="click-s" style="${modeRaw!=='click'?'display:none':''}">
+          <div class="form-group"><label>Visits before rotating</label><input type="number" name="click_threshold" value="${clickThresh}" min="1"></div>
         </div>
-        <div id="time-s" style="\${modeRaw!=='time'?'display:none':''}">
-          <div class="form-group"><label>Hours per variant</label><input type="number" name="time_hours" value="\${timeHours}" min="1"></div>
+        <div id="time-s" style="${modeRaw!=='time'?'display:none':''}">
+          <div class="form-group"><label>Hours per variant</label><input type="number" name="time_hours" value="${timeHours}" min="1"></div>
         </div>
       </div>
       <div class="card" style="margin-bottom:20px">
         <div class="card-title">Variants in Rotation</div>
-        <p style="font-size:12px;color:#475569;margin-bottom:14px">Check which variants are in rotation. Yours (MINE) are hidden from the admin panel but fully active on the site.</p>
-        \${variantOptions || '<div class="empty">No variants yet</div>'}
+        <p style="font-size:12px;color:#475569;margin-bottom:14px">Check to include. Use ▲▼ for exact order. Yours (MINE) are hidden from admin but active on site.</p>
+        <div id="rot-list">${variantRows || '<div class="empty">No variants yet</div>'}</div>
       </div>
-      <button type="submit" class="btn btn-gold">Save Rotation</button>
+      <button type="submit" class="btn btn-gold" onclick="buildSequence()">Save Rotation</button>
     </form>
     <script>
-    function toggleMode(v){
-      document.getElementById('click-s').style.display=v==='click'?'':'none';
-      document.getElementById('time-s').style.display=v==='time'?'':'none';
-    }
+    function toggleMode(v){document.getElementById('click-s').style.display=v==='click'?'':'none';document.getElementById('time-s').style.display=v==='time'?'':'none';}
+    function moveItem(btn,dir){const item=btn.closest('.rot-item');const list=document.getElementById('rot-list');const items=[...list.querySelectorAll('.rot-item')];const idx=items.indexOf(item);const target=items[idx+dir];if(!target)return;if(dir===-1)list.insertBefore(item,target);else list.insertBefore(target,item);refreshNumbers();}
+    function refreshNumbers(){const items=document.querySelectorAll('.rot-item');items.forEach((el,i)=>{el.querySelector('span[style*="min-width"]').textContent=(i+1)+'.';el.querySelectorAll('button')[0].disabled=i===0;el.querySelectorAll('button')[1].disabled=i===items.length-1;});}
+    function buildSequence(){const ids=[...document.querySelectorAll('.rot-item')].filter(el=>el.querySelector('.rot-check').checked).map(el=>el.dataset.id);document.getElementById('sequence-input').value=ids.join(',');}
     </script>
   `, 'rotation'));
 });
 
 router.post('/rotation', requireSuper, async (req, res) => {
   const { mode, click_threshold, time_hours } = req.body;
-  let sequence = req.body.sequence || [];
-  if (!Array.isArray(sequence)) sequence = [sequence];
-  sequence = sequence.map(Number);
+  const seqRaw = req.body.sequence || '';
+  let sequence = seqRaw ? seqRaw.split(',').map(Number).filter(Boolean) : [];
   const saves = [
     setSetting('rot_mode', mode),
     setSetting('rot_sequence', JSON.stringify(sequence)),

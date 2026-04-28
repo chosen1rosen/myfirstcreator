@@ -241,16 +241,30 @@ router.get('/rotation', requireAuth, async (req, res) => {
   ]);
   const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
 
-  const variantOptions = (variants || []).map(v =>
-    `<label style="display:flex;align-items:center;gap:10px;padding:10px;background:#1a1a2e;border-radius:8px;margin-bottom:8px;cursor:pointer">
-      <input type="checkbox" name="sequence" value="${v.id}" ${sequence.includes(v.id) ? 'checked' : ''} style="width:auto;margin:0">
-      <span>${v.name}</span>
-      ${String(v.id) === String(activeId) ? '<span class="badge badge-green" style="margin-left:auto">LIVE</span>' : ''}
-    </label>`
-  ).join('');
+  // Build ordered list: sequenced variants first (in order), then unsequenced
+  const ordered = [
+    ...sequence.map(id => (variants||[]).find(v => v.id === id)).filter(Boolean),
+    ...(variants||[]).filter(v => !sequence.includes(v.id))
+  ];
+
+  const variantRows = ordered.map((v, i) => {
+    const inRotation = sequence.includes(v.id);
+    const isActive = String(v.id) === String(activeId);
+    return `<div class="rot-item" data-id="${v.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#1a1a2e;border-radius:8px;margin-bottom:6px;border:1px solid ${inRotation ? '#2d2d4a' : '#1a1a2e'}">
+      <div style="display:flex;flex-direction:column;gap:2px;cursor:grab">
+        <button type="button" onclick="moveItem(this,-1)" style="background:none;border:none;color:#475569;cursor:pointer;padding:0;font-size:12px;line-height:1" ${i===0?'disabled':''}>▲</button>
+        <button type="button" onclick="moveItem(this,1)" style="background:none;border:none;color:#475569;cursor:pointer;padding:0;font-size:12px;line-height:1" ${i===ordered.length-1?'disabled':''}>▼</button>
+      </div>
+      <span style="color:#475569;font-size:11px;font-weight:600;min-width:20px">${i+1}.</span>
+      <input type="checkbox" class="rot-check" data-id="${v.id}" ${inRotation ? 'checked' : ''} style="width:auto;margin:0">
+      <span style="flex:1;font-size:14px">${v.name}</span>
+      ${isActive ? '<span class="badge badge-green">LIVE</span>' : ''}
+    </div>`;
+  }).join('');
 
   res.send(layout('Rotation Settings', `
-    <form method="POST" action="/admin/variants/rotation">
+    <form method="POST" action="/admin/variants/rotation" id="rot-form">
+      <input type="hidden" name="sequence" id="sequence-input" value="">
       <div class="card" style="margin-bottom:20px">
         <div class="card-title">Rotation Mode</div>
         <div class="form-group">
@@ -278,17 +292,42 @@ router.get('/rotation', requireAuth, async (req, res) => {
 
       <div class="card" style="margin-bottom:20px">
         <div class="card-title">Variants in Rotation</div>
-        <p style="font-size:13px;color:#64748b;margin-bottom:16px">Select which variants to include. They'll rotate in the order shown.</p>
-        ${variantOptions || '<div class="empty">No variants yet</div>'}
+        <p style="font-size:13px;color:#64748b;margin-bottom:16px">Check variants to include. Use ▲▼ to set the exact rotation order.</p>
+        <div id="rot-list">${variantRows || '<div class="empty">No variants yet</div>'}</div>
       </div>
 
-      <button type="submit" class="btn btn-primary">Save Rotation Settings</button>
+      <button type="submit" class="btn btn-primary" onclick="buildSequence()">Save Rotation Settings</button>
       <a href="/admin/variants" class="btn btn-ghost" style="margin-left:12px">Cancel</a>
     </form>
     <script>
     function toggleRotMode(v){
       document.getElementById('click-settings').style.display = v==='click' ? '' : 'none';
       document.getElementById('time-settings').style.display = v==='time' ? '' : 'none';
+    }
+    function moveItem(btn, dir) {
+      const item = btn.closest('.rot-item');
+      const list = document.getElementById('rot-list');
+      const items = [...list.querySelectorAll('.rot-item')];
+      const idx = items.indexOf(item);
+      const target = items[idx + dir];
+      if (!target) return;
+      if (dir === -1) list.insertBefore(item, target);
+      else list.insertBefore(target, item);
+      refreshNumbers();
+    }
+    function refreshNumbers() {
+      const items = document.querySelectorAll('.rot-item');
+      items.forEach((el, i) => {
+        el.querySelector('span[style*="min-width"]').textContent = (i+1) + '.';
+        el.querySelectorAll('button')[0].disabled = i === 0;
+        el.querySelectorAll('button')[1].disabled = i === items.length - 1;
+      });
+    }
+    function buildSequence() {
+      const ids = [...document.querySelectorAll('.rot-item')]
+        .filter(el => el.querySelector('.rot-check').checked)
+        .map(el => el.dataset.id);
+      document.getElementById('sequence-input').value = ids.join(',');
     }
     </script>
   `, 'variants'));
@@ -297,9 +336,12 @@ router.get('/rotation', requireAuth, async (req, res) => {
 // Save rotation settings
 router.post('/rotation', requireAuth, async (req, res) => {
   const { mode, click_threshold, time_hours } = req.body;
-  let sequence = req.body.sequence || [];
-  if (!Array.isArray(sequence)) sequence = [sequence];
-  sequence = sequence.map(Number);
+  // sequence comes as comma-separated string from hidden input (ordered)
+  const seqRaw = req.body.sequence || '';
+  let sequence = seqRaw ? seqRaw.split(',').map(Number).filter(Boolean) : [];
+  if (!sequence.length && req.body.sequence_arr) {
+    sequence = (Array.isArray(req.body.sequence_arr) ? req.body.sequence_arr : [req.body.sequence_arr]).map(Number);
+  }
 
   const saves = [
     setSetting('rot_mode', mode),

@@ -1,6 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
+const { getActiveVariant, renderLandingPage } = require('./admin-variants');
+const { renderPageFromBlocks } = require('./block-renderer');
+
+async function getCountry(ip) {
+  if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) return null;
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=country,countryCode`, { signal: AbortSignal.timeout(3000) });
+    const data = await res.json();
+    if (data.countryCode) {
+      const flag = data.countryCode.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
+      return `${flag} ${data.country}`;
+    }
+  } catch {}
+  return null;
+}
 
 function getIP(req) {
   return (
@@ -86,9 +101,43 @@ router.post('/api/signup', async (req, res) => {
   const ua = req.headers['user-agent'] || '';
   const slug = req.cookies?.mfc_ref || req.body.ref || null;
 
-  await supabase.from('signups').insert({ name: name || null, email: cleanEmail, tracking_slug: slug, ip, user_agent: ua });
+  const country = await getCountry(ip);
+  const variantId = req.cookies?.mfc_variant ? parseInt(req.cookies.mfc_variant) : null;
+  await supabase.from('signups').insert({ name: name || null, email: cleanEmail, tracking_slug: slug, ip, user_agent: ua, country, variant_id: variantId || null });
 
   res.json({ success: true, message: "You're in! Check your email for details." });
+});
+
+// Homepage — serve active variant (or fallback to static index.html)
+router.get('/', async (req, res, next) => {
+  try {
+    const variantId = await getActiveVariant();
+    if (!variantId) return next(); // fall through to static index.html
+
+    const { data: variant } = await supabase.from('variants').select('*').eq('id', variantId).single();
+    if (!variant) return next();
+
+    // Track visit with variant
+    const ip = getIP(req);
+    const slug = req.cookies?.mfc_ref || null;
+    await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: req.headers['user-agent'] || '', variant_id: variantId });
+
+    // Set variant cookie so signup can be attributed
+    res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
+
+    const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
+    // Render based on page mode
+    if (variant.page_mode === 'custom' && variant.custom_html) {
+      res.send(variant.custom_html);
+    } else if (variant.page_mode === 'builder' && variant.blocks?.length > 0) {
+      res.send(renderPageFromBlocks(variant.blocks, testimonials || []));
+    } else {
+      res.send(renderLandingPage(variant, testimonials || []));
+    }
+  } catch (err) {
+    console.error('Variant render error:', err);
+    next();
+  }
 });
 
 module.exports = router;

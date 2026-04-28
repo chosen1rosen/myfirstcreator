@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const supabase = require('../db');
+const layout = require('./admin-layout');
+const { router: variantsRouter } = require('./admin-variants');
+const builderRouter = require('./admin-builder');
+const customRouter = require('./admin-custom');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
@@ -28,82 +32,6 @@ function requireAuth(req, res, next) {
   res.redirect('/admin/login');
 }
 
-const layout = (title, content, activePage = '') => `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — MFC Admin</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d0d14; color: #e2e8f0; display: flex; min-height: 100vh; }
-    .sidebar { width: 220px; background: #12121f; border-right: 1px solid #1e1e30; padding: 24px 0; flex-shrink: 0; position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; }
-    .sidebar-logo { padding: 0 20px 24px; font-size: 15px; font-weight: 700; color: #a78bfa; border-bottom: 1px solid #1e1e30; margin-bottom: 16px; }
-    .sidebar a { display: block; padding: 10px 20px; color: #94a3b8; text-decoration: none; font-size: 14px; transition: all 0.15s; }
-    .sidebar a:hover, .sidebar a.active { background: #1e1e35; color: #a78bfa; }
-    .sidebar a.active { border-left: 3px solid #a78bfa; }
-    .sidebar-section { padding: 8px 20px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; margin-top: 8px; }
-    .main { margin-left: 220px; flex: 1; padding: 32px; }
-    .page-title { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 24px; }
-    .card { background: #12121f; border: 1px solid #1e1e30; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
-    .card-title { font-size: 14px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .stat { background: #12121f; border: 1px solid #1e1e30; border-radius: 12px; padding: 20px; }
-    .stat-num { font-size: 32px; font-weight: 700; color: #a78bfa; }
-    .stat-label { font-size: 13px; color: #64748b; margin-top: 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 10px 12px; color: #64748b; font-weight: 600; border-bottom: 1px solid #1e1e30; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 12px; border-bottom: 1px solid #1a1a2e; color: #cbd5e1; vertical-align: top; }
-    tr:hover td { background: #16162a; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-    .badge-green { background: #064e3b; color: #6ee7b7; }
-    .badge-gray { background: #1e293b; color: #64748b; }
-    .badge-purple { background: #3b0764; color: #c4b5fd; }
-    input, textarea, select { background: #1a1a2e; border: 1px solid #2d2d4a; color: #e2e8f0; padding: 10px 12px; border-radius: 8px; font-size: 14px; width: 100%; outline: none; font-family: inherit; }
-    input:focus, textarea:focus, select:focus { border-color: #7c3aed; }
-    textarea { resize: vertical; min-height: 80px; }
-    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
-    .form-group { margin-bottom: 16px; }
-    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.15s; text-decoration: none; }
-    .btn-primary { background: linear-gradient(135deg, #7c3aed, #06b6d4); color: white; }
-    .btn-primary:hover { opacity: 0.9; }
-    .btn-danger { background: #7f1d1d; color: #fca5a5; }
-    .btn-sm { padding: 6px 12px; font-size: 12px; }
-    .btn-ghost { background: #1e1e35; color: #94a3b8; }
-    .btn-ghost:hover { background: #2d2d4a; color: #e2e8f0; }
-    .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
-    .alert-success { background: #064e3b; color: #6ee7b7; border: 1px solid #065f46; }
-    .alert-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
-    .slug-preview { font-family: monospace; color: #06b6d4; font-size: 13px; background: #0d1117; padding: 4px 8px; border-radius: 4px; }
-    .empty { text-align: center; padding: 48px; color: #475569; }
-    .flex { display: flex; align-items: center; gap: 12px; }
-    .flex-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  </style>
-</head>
-<body>
-  <nav class="sidebar">
-    <div class="sidebar-logo">🤖 MFC Admin</div>
-    <div class="sidebar-section">Overview</div>
-    <a href="/admin/dashboard" class="${activePage === 'dashboard' ? 'active' : ''}">📊 Dashboard</a>
-    <a href="/admin/signups" class="${activePage === 'signups' ? 'active' : ''}">📧 Signups</a>
-    <div class="sidebar-section">Content</div>
-    <a href="/admin/vsl" class="${activePage === 'vsl' ? 'active' : ''}">🎬 VSL Video</a>
-    <a href="/admin/testimonials" class="${activePage === 'testimonials' ? 'active' : ''}">💬 Testimonials</a>
-    <a href="/admin/settings" class="${activePage === 'settings' ? 'active' : ''}">⚙️ Site Settings</a>
-    <div class="sidebar-section">Growth</div>
-    <a href="/admin/tracking" class="${activePage === 'tracking' ? 'active' : ''}">🔗 Tracking Links</a>
-    <a href="/" target="_blank" style="margin-top:16px">🌐 View Site</a>
-    <a href="/admin/logout">🚪 Logout</a>
-  </nav>
-  <main class="main">
-    <div class="page-title">${title}</div>
-    ${content}
-  </main>
-  <script>
-    function copyToClipboard(text) { navigator.clipboard.writeText(text); }
-  </script>
-</body>
-</html>`;
 
 // Login
 router.get('/login', (req, res) => {
@@ -149,7 +77,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 
   const topLinks = (links || []).map(l => ({ ...l, visits: vMap[l.slug] || 0, conversions: sMap[l.slug] || 0 })).sort((a, b) => b.visits - a.visits).slice(0, 5);
 
-  const recentRows = (recentSignups || []).map(s => `<tr><td>${s.name || '—'}</td><td>${s.email}</td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td>${s.ip}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
+  const recentRows = (recentSignups || []).map(s => `<tr><td>${s.name || '—'}</td><td>${s.email}</td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td>${s.country || s.ip}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
   const topRows = topLinks.map(l => `<tr><td><span class="slug-preview">/r/${l.slug}</span></td><td>${l.name || '—'}</td><td>${l.visits}</td><td>${l.conversions}</td><td>${l.visits > 0 ? ((l.conversions / l.visits) * 100).toFixed(1) + '%' : '—'}</td></tr>`).join('');
 
   res.send(layout('Dashboard', `
@@ -159,7 +87,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
       <div class="stat"><div class="stat-num">${totalVisitors || 0}</div><div class="stat-label">Tracked Visits</div></div>
       <div class="stat"><div class="stat-num">${totalLinks || 0}</div><div class="stat-label">Tracking Links</div></div>
     </div>
-    <div class="card"><div class="card-title">Recent Signups</div>${recentSignups?.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Source</th><th>IP</th><th>Time</th></tr></thead><tbody>${recentRows}</tbody></table>` : '<div class="empty">No signups yet</div>'}</div>
+    <div class="card"><div class="card-title">Recent Signups</div>${recentSignups?.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Location</th><th>Time</th></tr></thead><tbody>${recentRows}</tbody></table>` : '<div class="empty">No signups yet</div>'}</div>
     <div class="card"><div class="card-title">Top Tracking Links</div>${topLinks.length ? `<table><thead><tr><th>Slug</th><th>Name</th><th>Visits</th><th>Signups</th><th>CVR</th></tr></thead><tbody>${topRows}</tbody></table>` : '<div class="empty">No tracking links yet</div>'}</div>
   `, 'dashboard'));
 });
@@ -180,7 +108,7 @@ router.get('/signups', requireAuth, async (req, res) => {
   const { data: slugs } = await supabase.from('signups').select('tracking_slug').not('tracking_slug', 'is', null);
   const uniqueSlugs = [...new Set((slugs || []).map(s => s.tracking_slug))];
 
-  const rows = (signups || []).map(s => `<tr><td>${s.id}</td><td>${s.name || '—'}</td><td><strong>${s.email}</strong></td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td style="font-family:monospace;font-size:12px">${s.ip}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
+  const rows = (signups || []).map(s => `<tr><td>${s.id}</td><td>${s.name || '—'}</td><td><strong>${s.email}</strong></td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td style="font-size:13px">${s.country || `<span style="font-family:monospace;font-size:11px;color:#64748b">${s.ip}</span>`}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
   const filterOptions = uniqueSlugs.map(s => `<option value="${s}" ${filter === s ? 'selected' : ''}>${s}</option>`).join('');
   const pages = Math.ceil((total || 0) / limit);
 
@@ -194,7 +122,7 @@ router.get('/signups', requireAuth, async (req, res) => {
       </form>
       <div class="flex" style="gap:8px"><a href="/admin/signups/export" class="btn btn-ghost btn-sm">⬇️ Export CSV</a><span style="color:#64748b;font-size:13px">${total || 0} total</span></div>
     </div>
-    <div class="card">${signups?.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Source</th><th>IP</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No signups yet</div>'}</div>
+    <div class="card">${signups?.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Source</th><th>Location</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No signups yet</div>'}</div>
     ${pages > 1 ? `<div class="flex" style="gap:8px">${page > 1 ? `<a href="?page=${page-1}&q=${search}&ref=${filter}" class="btn btn-ghost btn-sm">← Prev</a>` : ''}<span style="color:#64748b;font-size:13px">Page ${page} of ${pages}</span>${page < pages ? `<a href="?page=${page+1}&q=${search}&ref=${filter}" class="btn btn-ghost btn-sm">Next →</a>` : ''}</div>` : ''}
   `, 'signups'));
 });
@@ -212,53 +140,119 @@ router.get('/signups/export', requireAuth, async (req, res) => {
 });
 
 // VSL
+// VSL: generate a signed upload URL so the browser uploads directly to Supabase (bypasses Vercel size limit)
+router.post('/vsl/signed-url', requireAuth, async (req, res) => {
+  const { filename, mimetype } = req.body;
+  const ext = (filename || 'video.mp4').split('.').pop().toLowerCase();
+  const path = `vsl/vsl-${Date.now()}.${ext}`;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error) return res.status(500).json({ error: error.message });
+  const publicUrl = supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  res.json({ signedUrl: data.signedUrl, token: data.token, path, publicUrl });
+});
+
+// VSL: confirm after direct browser upload
+router.post('/vsl/confirm', requireAuth, async (req, res) => {
+  const { vsl_type, vsl_url, publicUrl } = req.body;
+  await setSetting('vsl_type', vsl_type);
+  if (vsl_url) await setSetting('vsl_url', vsl_url);
+  if (publicUrl) await setSetting('vsl_file', publicUrl);
+  res.json({ ok: true });
+});
+
 router.get('/vsl', requireAuth, async (req, res) => {
   const [vslType, vslUrl, vslFile] = await Promise.all([getSetting('vsl_type'), getSetting('vsl_url'), getSetting('vsl_file')]);
   const msg = req.query.msg;
   res.send(layout('VSL Video', `
-    ${msg === 'saved' ? '<div class="alert alert-success">✅ VSL settings saved.</div>' : ''}
+    <div id="vsl-alert">${msg === 'saved' ? '<div class="alert alert-success">✅ VSL settings saved.</div>' : ''}</div>
     <div class="card">
       <div class="card-title">Video Source</div>
-      <form method="POST" action="/admin/vsl" enctype="multipart/form-data">
-        <div class="form-group"><label>Type</label>
-          <select name="vsl_type" id="vsl_type" onchange="toggleVSL(this.value)">
-            <option value="url" ${vslType==='url'?'selected':''}>YouTube / Vimeo URL</option>
-            <option value="file" ${vslType==='file'?'selected':''}>Upload Video File</option>
-            <option value="none" ${vslType==='none'?'selected':''}>Hide VSL section</option>
-          </select>
+      <div class="form-group"><label>Type</label>
+        <select id="vsl_type" onchange="toggleVSL(this.value)">
+          <option value="url" ${vslType==='url'?'selected':''}>YouTube / Vimeo URL</option>
+          <option value="file" ${vslType==='file'?'selected':''}>Upload Video File</option>
+          <option value="none" ${vslType==='none'?'selected':''}>Hide VSL section</option>
+        </select>
+      </div>
+      <div id="url-section" class="form-group" style="${vslType!=='url'?'display:none':''}">
+        <label>Video URL (YouTube, Vimeo, or direct embed URL)</label>
+        <input type="text" id="vsl_url" value="${vslUrl}" placeholder="https://www.youtube.com/embed/...">
+        <div style="font-size:12px;color:#64748b;margin-top:6px">Use embed format: youtube.com/embed/VIDEO_ID</div>
+      </div>
+      <div id="file-section" class="form-group" style="${vslType!=='file'?'display:none':''}">
+        <label>Upload Video File (MP4 recommended, no size limit)</label>
+        <input type="file" id="vsl_file" accept="video/*" onchange="fileChosen(this)">
+        ${vslFile ? `<div style="margin-top:8px;font-size:13px;color:#6ee7b7" id="current-file">Current: <a href="${vslFile}" target="_blank" style="color:#6ee7b7">View video</a></div>` : '<div id="current-file"></div>'}
+        <div id="upload-progress-wrap" style="display:none;margin-top:16px">
+          <div style="font-size:13px;color:#94a3b8;margin-bottom:8px" id="upload-status">Uploading...</div>
+          <div style="background:#1a1a2e;border-radius:999px;height:10px;overflow:hidden">
+            <div id="upload-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#06b6d4);transition:width 0.2s;border-radius:999px"></div>
+          </div>
+          <div id="upload-pct" style="font-size:12px;color:#64748b;margin-top:6px">0%</div>
         </div>
-        <div id="url-section" class="form-group" style="${vslType!=='url'?'display:none':''}">
-          <label>Video URL (YouTube, Vimeo, or direct embed URL)</label>
-          <input type="text" name="vsl_url" value="${vslUrl}" placeholder="https://www.youtube.com/embed/...">
-          <div style="font-size:12px;color:#64748b;margin-top:6px">Use embed format: youtube.com/embed/VIDEO_ID</div>
-        </div>
-        <div id="file-section" class="form-group" style="${vslType!=='file'?'display:none':''}">
-          <label>Upload Video File (MP4 recommended, max 200MB)</label>
-          <input type="file" name="vsl_file" accept="video/*">
-          ${vslFile ? `<div style="margin-top:8px;font-size:13px;color:#6ee7b7">Current: <a href="${vslFile}" target="_blank" style="color:#6ee7b7">View video</a></div>` : ''}
-        </div>
-        <button type="submit" class="btn btn-primary">Save VSL</button>
-      </form>
+      </div>
+      <button class="btn btn-primary" id="save-btn" onclick="saveVSL()">Save VSL</button>
     </div>
-    ${(vslType==='url'&&vslUrl)||(vslType==='file'&&vslFile) ? `<div class="card"><div class="card-title">Preview</div>
+    ${(vslType==='url'&&vslUrl)||(vslType==='file'&&vslFile) ? `<div class="card" id="preview-card"><div class="card-title">Preview</div>
       ${vslType==='url'&&vslUrl ? `<iframe src="${vslUrl}" width="100%" height="400" frameborder="0" allowfullscreen style="border-radius:8px"></iframe>` : ''}
       ${vslType==='file'&&vslFile ? `<video src="${vslFile}" controls width="100%" style="border-radius:8px"></video>` : ''}
-    </div>` : ''}
-    <script>function toggleVSL(v){document.getElementById('url-section').style.display=v==='url'?'':'none';document.getElementById('file-section').style.display=v==='file'?'':'none';}</script>
-  `, 'vsl'));
-});
+    </div>` : '<div id="preview-card"></div>'}
+    <script>
+    function toggleVSL(v){
+      document.getElementById('url-section').style.display=v==='url'?'':'none';
+      document.getElementById('file-section').style.display=v==='file'?'':'none';
+    }
+    function fileChosen(input){
+      if(input.files[0]) document.getElementById('current-file').innerHTML='<span style="color:#94a3b8;font-size:13px">Selected: '+input.files[0].name+' ('+Math.round(input.files[0].size/1024/1024)+'MB)</span>';
+    }
+    async function saveVSL(){
+      const type = document.getElementById('vsl_type').value;
+      const url = document.getElementById('vsl_url')?.value || '';
+      const fileInput = document.getElementById('vsl_file');
+      const file = fileInput?.files[0];
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true; btn.textContent = 'Saving...';
 
-router.post('/vsl', requireAuth, upload.single('vsl_file'), async (req, res) => {
-  const { vsl_type, vsl_url } = req.body;
-  await setSetting('vsl_type', vsl_type);
-  if (vsl_url) await setSetting('vsl_url', vsl_url);
-  if (req.file) {
-    const ext = req.file.originalname.split('.').pop();
-    const filename = `vsl-${Date.now()}.${ext}`;
-    const publicUrl = await uploadToStorage('vsl', filename, req.file.buffer, req.file.mimetype);
-    await setSetting('vsl_file', publicUrl);
-  }
-  res.redirect('/admin/vsl?msg=saved');
+      if(type === 'file' && file){
+        // Get signed URL
+        const sigRes = await fetch('/admin/vsl/signed-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,mimetype:file.type})});
+        const sig = await sigRes.json();
+        if(sig.error){ alert('Error: '+sig.error); btn.disabled=false; btn.textContent='Save VSL'; return; }
+
+        // Upload directly to Supabase with progress
+        document.getElementById('upload-progress-wrap').style.display='';
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', sig.signedUrl);
+          xhr.setRequestHeader('Content-Type', file.type);
+          xhr.upload.onprogress = e => {
+            if(e.lengthComputable){
+              const pct = Math.round(e.loaded/e.total*100);
+              document.getElementById('upload-bar').style.width=pct+'%';
+              document.getElementById('upload-pct').textContent=pct+'%';
+              document.getElementById('upload-status').textContent= pct < 100 ? 'Uploading... '+pct+'%' : 'Processing...';
+            }
+          };
+          xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload failed: '+xhr.status));
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(file);
+        }).catch(err => { alert(err.message); btn.disabled=false; btn.textContent='Save VSL'; throw err; });
+
+        // Confirm with server
+        await fetch('/admin/vsl/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vsl_type:'file',publicUrl:sig.publicUrl})});
+        document.getElementById('upload-status').textContent='✅ Upload complete!';
+        document.getElementById('vsl-alert').innerHTML='<div class="alert alert-success">✅ VSL saved successfully.</div>';
+        document.getElementById('preview-card').innerHTML='<div class="card"><div class="card-title">Preview</div><video src="'+sig.publicUrl+'" controls width="100%" style="border-radius:8px"></video></div>';
+        btn.disabled=false; btn.textContent='Save VSL';
+      } else {
+        // URL or none — simple JSON save
+        await fetch('/admin/vsl/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vsl_type:type,vsl_url:url})});
+        document.getElementById('vsl-alert').innerHTML='<div class="alert alert-success">✅ VSL settings saved.</div>';
+        btn.disabled=false; btn.textContent='Save VSL';
+      }
+    }
+    </script>
+  `, 'vsl'));
 });
 
 // Testimonials
@@ -412,5 +406,10 @@ router.post('/settings', requireAuth, async (req, res) => {
   await Promise.all(fields.map(f => req.body[f] !== undefined ? setSetting(f, req.body[f]) : null));
   res.redirect('/admin/settings?msg=saved');
 });
+
+// Mount sub-routers
+router.use('/variants', variantsRouter);
+router.use('/variants', builderRouter);
+router.use('/variants', customRouter);
 
 module.exports = router;

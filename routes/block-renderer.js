@@ -1,0 +1,226 @@
+// Block renderer — converts a blocks JSON array into a full landing page HTML string
+
+const BLOCK_TYPES = [
+  { type: 'hero',          label: '🦸 Hero Section' },
+  { type: 'vsl',           label: '🎬 Video (VSL)' },
+  { type: 'email_capture', label: '📧 Email Capture Form' },
+  { type: 'testimonials',  label: '💬 Testimonials' },
+  { type: 'features',      label: '⚡ Features Grid' },
+  { type: 'image_text',    label: '🖼️ Image + Text' },
+  { type: 'cta_banner',    label: '🚀 CTA Banner' },
+  { type: 'html',          label: '💻 Custom HTML' },
+];
+module.exports.BLOCK_TYPES = BLOCK_TYPES;
+
+// ─── render a single block to HTML ──────────────────────────────────────────
+
+function renderBlock(block, testimonialData = []) {
+  switch (block.type) {
+    case 'hero': return renderHero(block);
+    case 'vsl': return renderVSL(block);
+    case 'email_capture': return renderEmailCapture(block);
+    case 'testimonials': return renderTestimonials(block, testimonialData);
+    case 'features': return renderFeatures(block);
+    case 'image_text': return renderImageText(block);
+    case 'cta_banner': return renderCTABanner(block);
+    case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
+    default: return '';
+  }
+}
+
+function renderHero(b) {
+  const bg = b.bg_color || 'transparent';
+  const trust = (b.trust_items || '').split('\n').filter(Boolean);
+  return `
+  <section class="block-hero" style="background:${bg};padding:${b.padding||'64px'} 20px;text-align:center">
+    <div class="container">
+      ${b.badge_text ? `<div class="badge-pill">${b.badge_text}</div><br>` : ''}
+      <h1 class="hero-headline">${b.headline || 'Your Headline Here'}</h1>
+      ${b.subheadline ? `<p class="hero-sub">${b.subheadline}</p>` : ''}
+      ${b.cta_text ? `<a href="#signup" class="btn-hero">${b.cta_text}</a>` : ''}
+      ${trust.length ? `<div class="trust-row">${trust.map(t=>`<span>${t}</span>`).join('')}</div>` : ''}
+    </div>
+  </section>`;
+}
+
+function renderVSL(b) {
+  if (!b.vsl_url && !b.vsl_file) return '';
+  const content = b.vsl_url
+    ? `<div class="vsl-wrap"><iframe src="${b.vsl_url}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
+    : `<video src="${b.vsl_file}" controls style="width:100%;border-radius:16px"></video>`;
+  return `
+  <section class="block-vsl" style="padding:48px 20px;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
+    <div class="container">
+      ${b.caption ? `<p style="text-align:center;color:#94a3b8;margin-bottom:20px;font-size:15px">${b.caption}</p>` : ''}
+      ${content}
+    </div>
+  </section>`;
+}
+
+function renderEmailCapture(b) {
+  const bg = b.bg_color || 'transparent';
+  return `
+  <section class="block-email" id="signup" style="padding:72px 20px;background:${bg};text-align:center">
+    <div class="signup-box">
+      ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
+      ${b.title ? `<h2>${b.title}</h2>` : ''}
+      ${b.subtitle ? `<p style="color:#64748b;margin:8px 0 24px;font-size:15px">${b.subtitle}</p>` : ''}
+      <form id="signup-form">
+        ${b.show_name !== false ? `<input type="text" id="sig-name" placeholder="${b.name_placeholder||'Your first name'}">` : ''}
+        <input type="email" id="sig-email" placeholder="${b.email_placeholder||'Your email address'}" required>
+        <button type="submit" class="btn-submit">${b.cta_text||'Get Instant Access →'}</button>
+        <div class="success-msg" id="success-msg"></div>
+      </form>
+    </div>
+  </section>`;
+}
+
+function renderTestimonials(b, testimonialData) {
+  const limit = parseInt(b.limit) || 6;
+  const items = testimonialData.slice(0, limit);
+  if (!items.length) return `<section style="padding:48px 20px;text-align:center"><div class="container"><p style="color:#475569">Add testimonials in the Testimonials section of the admin to display them here.</p></div></section>`;
+  const cards = items.map(t => `
+    <div class="testimonial-card">
+      ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
+      <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
+      <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle||''}</div>
+      ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
+      <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
+    </div>`).join('');
+  const layout = b.layout === 'list' ? 'display:flex;flex-direction:column;gap:16px' : 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px';
+  return `
+  <section class="block-testimonials" style="padding:72px 20px;background:rgba(124,58,237,.03)">
+    <div class="container">
+      <div style="text-align:center;margin-bottom:32px">
+        ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
+        ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700">${b.title}</h2>` : ''}
+      </div>
+      <div style="${layout}">${cards}</div>
+    </div>
+  </section>`;
+}
+
+function renderFeatures(b) {
+  const items = b.items || [];
+  const cards = items.map(item => `
+    <div style="background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:28px;text-align:center">
+      ${item.icon ? `<div style="font-size:36px;margin-bottom:12px">${item.icon}</div>` : ''}
+      <div style="font-weight:700;font-size:16px;color:#f1f5f9;margin-bottom:8px">${item.title||''}</div>
+      <div style="font-size:14px;color:#64748b;line-height:1.6">${item.description||''}</div>
+    </div>`).join('');
+  const cols = b.columns || 3;
+  return `
+  <section class="block-features" style="padding:72px 20px">
+    <div class="container">
+      <div style="text-align:center;margin-bottom:40px">
+        ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
+        ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700;margin-bottom:12px">${b.title}</h2>` : ''}
+        ${b.subtitle ? `<p style="color:#64748b;font-size:16px;max-width:600px;margin:0 auto">${b.subtitle}</p>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${cols===2?'300':'220'}px,1fr));gap:20px">${cards}</div>
+    </div>
+  </section>`;
+}
+
+function renderImageText(b) {
+  const reverse = b.image_side === 'right';
+  const imgHTML = b.image_url ? `<img src="${b.image_url}" alt="" style="width:100%;border-radius:16px;object-fit:cover">` : `<div style="background:#1a1a2e;border:2px dashed #2d2d4a;border-radius:16px;height:300px;display:flex;align-items:center;justify-content:center;color:#475569">Image placeholder</div>`;
+  const textHTML = `
+    ${b.label ? `<div class="section-label" style="margin-bottom:12px">${b.label}</div>` : ''}
+    ${b.title ? `<h2 style="font-size:clamp(22px,3.5vw,36px);font-weight:700;margin-bottom:16px">${b.title}</h2>` : ''}
+    ${b.body ? `<p style="color:#94a3b8;font-size:16px;line-height:1.7;margin-bottom:24px">${b.body}</p>` : ''}
+    ${b.cta_text ? `<a href="#signup" class="btn-hero" style="font-size:16px;padding:14px 28px">${b.cta_text}</a>` : ''}`;
+  return `
+  <section class="block-image-text" style="padding:72px 20px">
+    <div class="container">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;${reverse?'direction:rtl':''}">
+        <div style="${reverse?'direction:ltr':''}">${reverse ? textHTML : imgHTML}</div>
+        <div style="${reverse?'direction:ltr':''}">${reverse ? imgHTML : textHTML}</div>
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderCTABanner(b) {
+  const bg = b.bg_color || 'linear-gradient(135deg,#7c3aed,#06b6d4)';
+  return `
+  <section class="block-cta" style="padding:80px 20px;background:${bg};text-align:center">
+    <div class="container">
+      ${b.headline ? `<h2 style="font-size:clamp(28px,5vw,48px);font-weight:800;color:${b.text_color||'white'};margin-bottom:24px">${b.headline}</h2>` : ''}
+      ${b.subheadline ? `<p style="color:${b.text_color||'rgba(255,255,255,0.8)'};font-size:18px;margin-bottom:32px">${b.subheadline}</p>` : ''}
+      ${b.cta_text ? `<a href="#signup" style="display:inline-block;padding:18px 48px;background:white;color:#7c3aed;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none">${b.cta_text}</a>` : ''}
+    </div>
+  </section>`;
+}
+
+// ─── render full page from blocks ────────────────────────────────────────────
+
+function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
+  const bodyBlocks = (blocks || []).map(b => renderBlock(b, testimonialData)).join('\n');
+  // Extract CTA text from first email_capture or hero block for the signup JS
+  const emailBlock = (blocks || []).find(b => b.type === 'email_capture');
+  const ctaText = emailBlock?.cta_text || 'Get Instant Access →';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyFirstCreator.ai</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d14;color:#e2e8f0;min-height:100vh}
+    .container{max-width:900px;margin:0 auto;padding:0 20px}
+    .badge-pill{display:inline-block;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:#a78bfa;padding:6px 16px;border-radius:999px;font-size:13px;font-weight:600;margin-bottom:20px}
+    .hero-headline{font-size:clamp(32px,6vw,56px);font-weight:800;line-height:1.1;margin-bottom:20px;background:linear-gradient(135deg,#fff 60%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .hero-sub{font-size:clamp(16px,2.5vw,20px);color:#94a3b8;max-width:640px;margin:0 auto 32px;line-height:1.6}
+    .btn-hero{display:inline-block;padding:18px 40px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;text-decoration:none;border-radius:12px;font-size:18px;font-weight:700;transition:.2s;box-shadow:0 0 40px rgba(124,58,237,.4)}
+    .btn-hero:hover{transform:translateY(-2px);box-shadow:0 0 60px rgba(124,58,237,.6)}
+    .trust-row{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:24px;font-size:14px;color:#64748b}
+    .vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}
+    .vsl-wrap iframe,.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%}
+    .signup-box{background:#12121f;border:1px solid #1e1e30;border-radius:20px;padding:48px 32px;max-width:480px;margin:0 auto}
+    .signup-box h2{font-size:28px;font-weight:700;margin-bottom:8px}
+    input[type=text],input[type=email]{width:100%;background:#1a1a2e;border:1px solid #2d2d4a;color:#e2e8f0;padding:14px 16px;border-radius:10px;font-size:15px;margin-bottom:12px;outline:none;font-family:inherit}
+    input:focus{border-color:#7c3aed}
+    .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
+    .btn-submit:hover{opacity:.9}
+    .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
+    .testimonial-card{background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
+    .custom-block img{max-width:100%}
+    @media(max-width:640px){
+      .block-image-text .container>div{grid-template-columns:1fr!important}
+    }
+    ${isPreview ? '#preview-banner{position:fixed;top:0;left:0;right:0;background:#7c3aed;color:white;text-align:center;padding:8px;font-size:13px;z-index:9999}body{padding-top:36px}' : ''}
+  </style>
+</head>
+<body>
+  ${isPreview ? '<div id="preview-banner">⚠️ PREVIEW MODE — not live on the site</div>' : ''}
+  ${bodyBlocks}
+  <footer style="text-align:center;padding:32px;border-top:1px solid #1e1e30">
+    <p style="color:#475569;font-size:13px">© 2025 MyFirstCreator.ai · <a href="#" style="color:#475569">Privacy Policy</a> · <a href="#" style="color:#475569">Terms</a></p>
+  </footer>
+  <script>
+    const form = document.getElementById('signup-form');
+    if(form) form.addEventListener('submit', async e => {
+      e.preventDefault();
+      ${isPreview ? 'alert("Preview mode — signups disabled"); return;' : ''}
+      const btn = form.querySelector('.btn-submit');
+      btn.textContent = 'One moment...'; btn.disabled = true;
+      const nameEl = document.getElementById('sig-name');
+      const res = await fetch('/api/signup', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name: nameEl?.value||'', email: document.getElementById('sig-email').value })
+      });
+      const data = await res.json();
+      const msg = document.getElementById('success-msg');
+      msg.textContent = data.message || "You're in!"; msg.style.display = 'block';
+      btn.textContent = '${ctaText}'; btn.disabled = false;
+    });
+  </script>
+</body>
+</html>`;
+}
+
+module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES };

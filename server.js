@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 
@@ -13,17 +13,31 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'mfc-secret-change-this',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' }
+// Cookie-based session — survives across Vercel serverless instances
+app.use(cookieSession({
+  name: 'mfc_sess',
+  keys: [process.env.SESSION_SECRET || 'mfc-secret-change-this'],
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  sameSite: 'lax',
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production'
 }));
 
+// Shim so req.session.destroy() still works (used in logout)
+app.use((req, res, next) => {
+  if (req.session && !req.session.destroy) {
+    req.session.destroy = (cb) => { req.session = null; if (cb) cb(); };
+  }
+  next();
+});
+
+// Public router first — catches / for variant serving before static fallback
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);
+
+// Static files — fallback for CSS/JS/images and index.html when no variant is set
+app.use(express.static(path.join(__dirname, 'public')));
 
 // For local dev
 if (require.main === module) {

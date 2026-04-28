@@ -256,7 +256,10 @@ router.get('/signups', requireAuth, (req, res) => {
         <button type="submit" class="btn btn-ghost btn-sm">Filter</button>
         ${search || filter ? '<a href="/admin/signups" class="btn btn-ghost btn-sm">Clear</a>' : ''}
       </form>
-      <span style="color:#64748b;font-size:13px">${total} total</span>
+      <div class="flex" style="gap:8px">
+        <a href="/admin/signups/export" class="btn btn-ghost btn-sm">⬇️ Export CSV</a>
+        <span style="color:#64748b;font-size:13px">${total} total</span>
+      </div>
     </div>
     <div class="card">
       ${signups.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Source</th><th>IP</th><th>Time</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No signups yet</div>'}
@@ -267,6 +270,26 @@ router.get('/signups', requireAuth, (req, res) => {
       ${page < Math.ceil(total / limit) ? `<a href="?page=${page + 1}&q=${search}&ref=${filter}" class="btn btn-ghost btn-sm">Next →</a>` : ''}
     </div>` : ''}
   `, 'signups'));
+});
+
+// ─── Signups Export ────────────────────────────────────────────────────────
+router.get('/signups/export', requireAuth, (req, res) => {
+  const signups = db.prepare('SELECT * FROM signups ORDER BY signed_up_at DESC').all();
+  const rows = [
+    ['ID', 'Name', 'Email', 'Source', 'IP', 'Signed Up'].join(','),
+    ...signups.map(s => [
+      s.id,
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"${s.email.replace(/"/g, '""')}"`,
+      s.tracking_slug || 'direct',
+      s.ip,
+      new Date(s.signed_up_at).toISOString(),
+    ].join(','))
+  ].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="signups-${new Date().toISOString().slice(0,10)}.csv"`);
+  res.send(rows);
 });
 
 // ─── VSL ────────────────────────────────────────────────────────────────────

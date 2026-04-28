@@ -70,7 +70,7 @@ const layout = (title, content, activePage = '') => `<!DOCTYPE html>
     <div class="sidebar-sub">Steven — Full Control</div>
     <a href="/superadmin/dashboard" class="${activePage==='dashboard'?'active':''}">📊 Overview</a>
     <div class="sidebar-section">Traffic Control</div>
-    <a href="/superadmin/rotation" class="${activePage==='rotation'?'active':''}">🎛️ Traffic Split</a>
+    <a href="/superadmin/rotation" class="${activePage==='rotation'?'active':''}">🎛️ Rotation Control</a>
     <a href="/superadmin/variants" class="${activePage==='variants'?'active':''}">🧪 All Variants</a>
     <a href="/superadmin/my-variants" class="${activePage==='my-variants'?'active':''}">⚡ My Variants</a>
     <div class="sidebar-section">Admin View</div>
@@ -137,7 +137,6 @@ router.get('/dashboard', requireSuper, async (req, res) => {
     supabase.from('visitors').select('*', { count: 'exact', head: true }),
   ]);
 
-  const superPct = await getSetting('super_traffic_pct') || '25';
   const { data: recentAll } = await supabase.from('signups').select('*, variants(name,owner)').order('signed_up_at', { ascending: false }).limit(15);
 
   const rows = (recentAll || []).map(s => {
@@ -158,7 +157,6 @@ router.get('/dashboard', requireSuper, async (req, res) => {
       <div class="stat"><div class="stat-num" style="color:#f59e0b">${mySignups||0}</div><div class="stat-label">My Signups ⚡</div></div>
       <div class="stat"><div class="stat-num" style="color:#a78bfa">${adminSignups||0}</div><div class="stat-label">Admin Signups</div></div>
       <div class="stat"><div class="stat-num">${totalVisits||0}</div><div class="stat-label">Total Visits</div></div>
-      <div class="stat"><div class="stat-num">${superPct}%</div><div class="stat-label">My Traffic Share</div></div>
     </div>
     <div class="card">
       <div class="card-title">All Recent Signups</div>
@@ -167,52 +165,85 @@ router.get('/dashboard', requireSuper, async (req, res) => {
   `, 'dashboard'));
 });
 
-// ─── Traffic Split control ────────────────────────────────────────────────────
+// ─── Rotation Control ────────────────────────────────────────────────────────
 
 router.get('/rotation', requireSuper, async (req, res) => {
-  const { data: myVariants } = await supabase.from('variants').select('*').eq('owner','super').order('created_at');
-  const superPct = await getSetting('super_traffic_pct') || '25';
-  const superActiveId = await getSetting('super_active_variant_id');
+  const { data: allVariants } = await supabase.from('variants').select('*').order('owner').order('created_at');
+  const sequenceRaw = await getSetting('rot_sequence');
+  const activeId = await getSetting('rot_active_id');
+  const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
   const msg = req.query.msg;
+  const modeRaw = await getSetting('rot_mode') || 'manual';
+  const clickThresh = await getSetting('rot_click_threshold') || '500';
+  const timeHours = await getSetting('rot_time_hours') || '168';
 
-  const variantOptions = (myVariants || []).map(v =>
-    `<label style="display:flex;align-items:center;gap:10px;padding:10px;background:#111122;border-radius:8px;margin-bottom:8px;cursor:pointer">
-      <input type="radio" name="super_active_id" value="${v.id}" ${String(v.id)===String(superActiveId)?'checked':''} style="width:auto;margin:0">
-      <span>${v.name}</span>
-      ${String(v.id)===String(superActiveId) ? '<span class="badge badge-gold" style="margin-left:auto">LIVE</span>' : ''}
-    </label>`
-  ).join('');
+  const variantOptions = (allVariants || []).map(v => {
+    const inRotation = sequence.includes(v.id);
+    const isActive = String(v.id) === String(activeId);
+    const isMine = v.owner === 'super';
+    return `<label style="display:flex;align-items:center;gap:10px;padding:10px;background:#111122;border-radius:8px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" name="sequence" value="\${v.id}" \${inRotation ? 'checked' : ''} style="width:auto;margin:0">
+      <span>\${isMine ? '<span class="super-tag" style="margin-right:4px">MINE</span>' : ''}\${v.name}</span>
+      \${isActive ? '<span class="badge badge-green" style="margin-left:auto">LIVE</span>' : ''}
+    </label>`;
+  }).join('');
 
-  res.send(layout('Traffic Split', `
-    ${msg==='saved' ? '<div class="alert-success">✅ Settings saved.</div>' : ''}
+  res.send(layout('Rotation Control', `
+    \${msg==='saved' ? '<div class="alert-success">✅ Rotation updated.</div>' : ''}
+    <p style="font-size:13px;color:#64748b;margin-bottom:20px">
+      Add or remove variants from the live rotation — including yours. The admin only sees their own variants in their panel; yours are invisible to them but fully active on the site.
+    </p>
     <form method="POST" action="/superadmin/rotation">
       <div class="card" style="margin-bottom:20px">
-        <div class="card-title">My Traffic Share</div>
-        <p style="font-size:13px;color:#64748b;margin-bottom:16px">
-          This % of all page visits goes to YOUR variants. The rest goes to the admin's rotation as normal.
-        </p>
+        <div class="card-title">Rotation Mode</div>
         <div class="form-group">
-          <label>My share of traffic (%)</label>
-          <input type="number" name="super_traffic_pct" value="${superPct}" min="0" max="99" style="max-width:120px">
-          <div style="font-size:12px;color:#64748b;margin-top:6px">E.g. 25 = 25% to your pages, 75% to admin's pages</div>
+          <select name="mode" id="rot-mode" onchange="toggleMode(this.value)">
+            <option value="manual" \${modeRaw==='manual'?'selected':''}>Manual — set active variant yourself</option>
+            <option value="click" \${modeRaw==='click'?'selected':''}>Click-based — rotate after X visits</option>
+            <option value="time" \${modeRaw==='time'?'selected':''}>Time-based — rotate every X hours</option>
+          </select>
+        </div>
+        <div id="click-s" style="\${modeRaw!=='click'?'display:none':''}">
+          <div class="form-group"><label>Visits before rotating</label><input type="number" name="click_threshold" value="\${clickThresh}" min="1"></div>
+        </div>
+        <div id="time-s" style="\${modeRaw!=='time'?'display:none':''}">
+          <div class="form-group"><label>Hours per variant</label><input type="number" name="time_hours" value="\${timeHours}" min="1"></div>
         </div>
       </div>
       <div class="card" style="margin-bottom:20px">
-        <div class="card-title">My Active Variant</div>
-        <p style="font-size:13px;color:#64748b;margin-bottom:16px">Which of your variants serves during your traffic share?</p>
-        ${myVariants?.length ? variantOptions : '<div class="empty" style="padding:20px">No variants yet — <a href="/superadmin/my-variants/new" style="color:#f59e0b">create one first</a></div>'}
+        <div class="card-title">Variants in Rotation</div>
+        <p style="font-size:12px;color:#475569;margin-bottom:14px">Check which variants are in rotation. Yours (MINE) are hidden from the admin panel but fully active on the site.</p>
+        \${variantOptions || '<div class="empty">No variants yet</div>'}
       </div>
-      <button type="submit" class="btn btn-gold">Save Settings</button>
+      <button type="submit" class="btn btn-gold">Save Rotation</button>
     </form>
+    <script>
+    function toggleMode(v){
+      document.getElementById('click-s').style.display=v==='click'?'':'none';
+      document.getElementById('time-s').style.display=v==='time'?'':'none';
+    }
+    </script>
   `, 'rotation'));
 });
 
 router.post('/rotation', requireSuper, async (req, res) => {
-  const { super_traffic_pct, super_active_id } = req.body;
-  await Promise.all([
-    setSetting('super_traffic_pct', super_traffic_pct || '25'),
-    super_active_id ? setSetting('super_active_variant_id', super_active_id) : Promise.resolve(),
-  ]);
+  const { mode, click_threshold, time_hours } = req.body;
+  let sequence = req.body.sequence || [];
+  if (!Array.isArray(sequence)) sequence = [sequence];
+  sequence = sequence.map(Number);
+  const saves = [
+    setSetting('rot_mode', mode),
+    setSetting('rot_sequence', JSON.stringify(sequence)),
+    setSetting('rot_click_threshold', click_threshold || '500'),
+    setSetting('rot_time_hours', time_hours || '168'),
+    setSetting('rot_click_count', '0'),
+    setSetting('rot_started_at', new Date().toISOString()),
+  ];
+  const activeId = await getSetting('rot_active_id');
+  if (sequence.length > 0 && (!activeId || !sequence.includes(parseInt(activeId)))) {
+    saves.push(setSetting('rot_active_id', String(sequence[0])));
+  }
+  await Promise.all(saves);
   res.redirect('/superadmin/rotation?msg=saved');
 });
 

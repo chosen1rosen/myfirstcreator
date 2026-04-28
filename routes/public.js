@@ -108,22 +108,10 @@ router.post('/api/signup', async (req, res) => {
   res.json({ success: true, message: "You're in! Check your email for details." });
 });
 
-// Homepage — traffic split: super admin gets their %, rest goes to regular rotation
+// Homepage — serve active variant from unified rotation (includes super admin's hidden variants)
 router.get('/', async (req, res, next) => {
   try {
-    let variantId = null;
-
-    // Check if super traffic split is active
-    const superPct = parseFloat(await getSetting('super_traffic_pct') || '0');
-    const superActiveId = await getSetting('super_active_variant_id');
-
-    if (superPct > 0 && superActiveId && Math.random() * 100 < superPct) {
-      // Serve super admin's variant
-      variantId = parseInt(superActiveId);
-    } else {
-      // Serve regular admin rotation
-      variantId = await getActiveVariant();
-    }
+    let variantId = await getActiveVariant();
 
     if (!variantId) return next();
 

@@ -111,9 +111,20 @@ IMPORTANT RULES FOR DYNAMIC SECTIONS:
 - Testimonials: use <section id="testimonials-section"><div id="testimonials-grid"></div></section>
 - Signup form: use <form id="signup-form"> with <input id="email"> and optionally <input id="name">
 - NEVER hardcode video URLs, testimonial names/quotes, or emails — always use the dynamic approach
-- Always output complete HTML (full document) inside <html_update>...</html_update>
-- Never include <html_update> for non-HTML responses (advice, questions)
-- Keep explanation brief — let the code speak`;
+OUTPUT RULES — choose the right format for the job:
+
+For SMALL changes (colors, text, font sizes, spacing, single element tweaks):
+Use <css_patch> with only the overriding CSS rules — do NOT rewrite the whole page:
+<css_patch>
+.btn-submit { background: red !important; background-image: none !important; }
+</css_patch>
+
+For LARGE changes (new sections, layout restructure, major redesign):
+Output the full page inside <html_update>...</html_update>
+
+For advice/copy suggestions with no code: just reply with text.
+
+IMPORTANT: Prefer css_patch for anything that is purely a style change. It applies instantly and is much faster than a full rewrite.`;
 
 // ─── Custom HTML editor (3-panel layout) ─────────────────────────────────────
 
@@ -371,7 +382,6 @@ Try:<br>
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
 
-          // Parse SSE
           const lines = chunk.split('\\n');
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
@@ -382,25 +392,43 @@ Try:<br>
               const token = parsed.token || '';
               fullText += token;
 
-              // Extract HTML from <html_update>...</html_update> tags
+              // ── CSS patch (fast path — no full rewrite) ──
+              if (!inHtmlTag && fullText.includes('<css_patch>') && fullText.includes('</css_patch>')) {
+                const cssMatch = fullText.match(/<css_patch>([\s\S]*?)<\/css_patch>/);
+                if (cssMatch) {
+                  const css = cssMatch[1].trim();
+                  // Inject at end of </style> block in the editor
+                  let html = ta.value;
+                  if (html.includes('</style>')) {
+                    html = html.replace(/(<\/style>)(?![\s\S]*<\/style>)/, '\n  /* AI patch */\n  ' + css + '\n$1');
+                  } else {
+                    html = html.replace('</head>', '<style>\n  /* AI patch */\n  ' + css + '\n</style>\n</head>');
+                  }
+                  ta.value = html;
+                  displayText = fullText.replace(/<css_patch>[\s\S]*?<\/css_patch>/, '').trim();
+                  aiBubble.textContent = displayText || '✅ Applied style change';
+                  chatLog.scrollTop = chatLog.scrollHeight;
+                }
+                continue;
+              }
+
+              // ── Full HTML rewrite (streams into editor) ──
               if (!inHtmlTag) {
                 if (fullText.includes('<html_update>')) {
                   inHtmlTag = true;
                   const split = fullText.split('<html_update>');
                   displayText = split[0];
                   htmlBuffer = split[1] || '';
-                  // Write to editor live as HTML streams in
                   if (htmlBuffer) { ta.value = htmlBuffer; ta.scrollTop = ta.scrollHeight; }
                 } else {
                   displayText = fullText;
                 }
               } else {
-                // We're inside html_update
                 if (fullText.includes('</html_update>')) {
                   inHtmlTag = false;
                   const endSplit = fullText.split('</html_update>');
                   htmlBuffer = endSplit[0].split('<html_update>').pop();
-                  displayText = (endSplit[0].split('<html_update>')[0] || '') + endSplit[1] || '';
+                  displayText = (endSplit[0].split('<html_update>')[0] || '') + (endSplit[1] || '');
                   ta.value = htmlBuffer;
                 } else {
                   htmlBuffer = fullText.split('<html_update>').pop();
@@ -409,7 +437,6 @@ Try:<br>
                 }
               }
 
-              // Update chat bubble with non-HTML text
               aiBubble.textContent = displayText.trim() || (inHtmlTag ? '⌨️ Writing HTML...' : '');
               chatLog.scrollTop = chatLog.scrollHeight;
 
@@ -417,12 +444,12 @@ Try:<br>
           }
         }
 
-        // Streaming done
+        // Done streaming
         aiBubble.classList.remove('streaming');
         chatHistory.push({ role: 'assistant', content: fullText });
 
-        // If we got HTML, save and refresh preview
-        if (htmlBuffer && htmlBuffer.includes('<')) {
+        // Save and refresh if any HTML was changed
+        if (htmlBuffer.includes('<') || fullText.includes('<css_patch>')) {
           await saveHtml(ta.value);
           refreshPreview();
           addSysMsg('✅ Preview updated');

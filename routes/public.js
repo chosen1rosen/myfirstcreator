@@ -29,7 +29,7 @@ function getIP(req) {
 
 async function getSetting(key) {
   const { data } = await supabase.from('settings').select('value').eq('key', key).single();
-  return data?.value ?? '';
+  return data?.value ?? null;
 }
 
 // Tracking link redirect
@@ -108,25 +108,35 @@ router.post('/api/signup', async (req, res) => {
   res.json({ success: true, message: "You're in! Check your email for details." });
 });
 
-// Homepage — serve active variant (or fallback to static index.html)
+// Homepage — traffic split: super admin gets their %, rest goes to regular rotation
 router.get('/', async (req, res, next) => {
   try {
-    const variantId = await getActiveVariant();
-    if (!variantId) return next(); // fall through to static index.html
+    let variantId = null;
+
+    // Check if super traffic split is active
+    const superPct = parseFloat(await getSetting('super_traffic_pct') || '0');
+    const superActiveId = await getSetting('super_active_variant_id');
+
+    if (superPct > 0 && superActiveId && Math.random() * 100 < superPct) {
+      // Serve super admin's variant
+      variantId = parseInt(superActiveId);
+    } else {
+      // Serve regular admin rotation
+      variantId = await getActiveVariant();
+    }
+
+    if (!variantId) return next();
 
     const { data: variant } = await supabase.from('variants').select('*').eq('id', variantId).single();
     if (!variant) return next();
 
-    // Track visit with variant
+    // Track visit
     const ip = getIP(req);
     const slug = req.cookies?.mfc_ref || null;
     await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: req.headers['user-agent'] || '', variant_id: variantId });
-
-    // Set variant cookie so signup can be attributed
     res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
 
     const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
-    // Render based on page mode
     if (variant.page_mode === 'custom' && variant.custom_html) {
       res.send(variant.custom_html);
     } else if (variant.page_mode === 'builder' && variant.blocks?.length > 0) {

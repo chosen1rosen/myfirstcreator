@@ -6,6 +6,7 @@ const path = require('path');
 
 const publicRouter = require('./routes/public');
 const adminRouter = require('./routes/admin');
+const superAdminRouter = require('./routes/superadmin');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 // Public router first — catches / for variant serving before static fallback
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);
+app.use('/superadmin', superAdminRouter);
 
 // Static files — fallback for CSS/JS/images and index.html when no variant is set
 app.use(express.static(path.join(__dirname, 'public')));

@@ -4,16 +4,27 @@ const supabase = require('../db');
 const layout = require('./admin-layout');
 const { BLOCK_TYPES, renderPageFromBlocks } = require('./block-renderer');
 const Anthropic = require('@anthropic-ai/sdk');
+const { getAdminOwners } = require('./admin-utils');
 
 function requireAuth(req, res, next) {
   if (req.session?.admin) return next();
   res.redirect('/admin/login');
 }
 
+async function getVariantForAdmin(id, adminId) {
+  const owners = getAdminOwners(adminId);
+  const { data: v } = await supabase.from('variants').select('*').eq('id', id).single();
+  // Allow access if variant belongs to this admin (or is 'admin'/'steven' for steven)
+  if (!v) return null;
+  if (owners.includes(v.owner)) return v;
+  return null; // not owned by this admin
+}
+
 // ─── Builder page ─────────────────────────────────────────────────────────────
 
 router.get('/:id/builder', requireAuth, async (req, res) => {
-  const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
+  const adminId = req.session.adminId || 'steven';
+  const v = await getVariantForAdmin(req.params.id, adminId);
   if (!v) return res.redirect('/admin/variants');
 
   const blocks = v.blocks || [];
@@ -425,6 +436,9 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
 // ─── Save blocks ──────────────────────────────────────────────────────────────
 
 router.post('/:id/builder/save', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const v = await getVariantForAdmin(req.params.id, adminId);
+  if (!v) return res.status(403).json({ error: 'Access denied' });
   const { blocks } = req.body;
   const { error } = await supabase.from('variants').update({
     blocks: blocks,

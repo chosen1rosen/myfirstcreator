@@ -3,10 +3,19 @@ const router = express.Router();
 const supabase = require('../db');
 const layout = require('./admin-layout');
 const Anthropic = require('@anthropic-ai/sdk');
+const { getAdminOwners } = require('./admin-utils');
 
 function requireAuth(req, res, next) {
   if (req.session?.admin) return next();
   res.redirect('/admin/login');
+}
+
+async function getVariantForAdmin(id, adminId) {
+  const owners = getAdminOwners(adminId);
+  const { data: v } = await supabase.from('variants').select('*').eq('id', id).single();
+  if (!v) return null;
+  if (owners.includes(v.owner)) return v;
+  return null;
 }
 
 const STARTER_HTML = `<!DOCTYPE html>
@@ -129,7 +138,8 @@ OUTPUT FORMAT RULES — YOU MUST FOLLOW THESE EXACTLY:
 // ─── Custom HTML editor (3-panel layout) ─────────────────────────────────────
 
 router.get('/:id/custom', requireAuth, async (req, res) => {
-  const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
+  const adminId = req.session.adminId || 'steven';
+  const v = await getVariantForAdmin(req.params.id, adminId);
   if (!v) return res.redirect('/admin/variants');
 
   const currentHtml = v.custom_html || STARTER_HTML;
@@ -629,6 +639,9 @@ router.post('/:id/custom/delete-testimonial/:tid', requireAuth, async (req, res)
 // ─── Save custom HTML ─────────────────────────────────────────────────────────
 
 router.post('/:id/custom/save', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const v = await getVariantForAdmin(req.params.id, adminId);
+  if (!v) return res.status(403).json({ error: 'Access denied' });
   const { html } = req.body;
   const { error } = await supabase.from('variants').update({
     custom_html: html,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
+const { getAdminOwners, rotKey } = require('./admin-utils');
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,9 @@ const { renderPageFromBlocks } = require('./block-renderer');
 
 // List variants
 router.get('/', requireAuth, async (req, res) => {
-  const { data: variants } = await supabase.from('variants').select('*').order('created_at', { ascending: false });
+  const adminId = req.session.adminId || 'steven';
+  const owners = getAdminOwners(adminId);
+  const { data: variants } = await supabase.from('variants').select('*').in('owner', owners).order('created_at', { ascending: false });
 
   // Stats per variant
   const { data: visitRows } = await supabase.from('visitors').select('variant_id');
@@ -94,11 +97,11 @@ router.get('/', requireAuth, async (req, res) => {
   (visitRows || []).forEach(r => { if (r.variant_id) vMap[r.variant_id] = (vMap[r.variant_id] || 0) + 1; });
   (signupRows || []).forEach(r => { if (r.variant_id) sMap[r.variant_id] = (sMap[r.variant_id] || 0) + 1; });
 
-  // Rotation state
+  // Rotation state (scoped per admin)
   const [mode, activeId, clickCount, startedAt, clickThresh, timeHours, sequenceRaw] = await Promise.all([
-    getSetting('rot_mode'), getSetting('rot_active_id'), getSetting('rot_click_count'),
-    getSetting('rot_started_at'), getSetting('rot_click_threshold'), getSetting('rot_time_hours'),
-    getSetting('rot_sequence'),
+    getSetting(rotKey(adminId,'mode')), getSetting(rotKey(adminId,'active_id')), getSetting(rotKey(adminId,'click_count')),
+    getSetting(rotKey(adminId,'started_at')), getSetting(rotKey(adminId,'click_threshold')), getSetting(rotKey(adminId,'time_hours')),
+    getSetting(rotKey(adminId,'sequence')),
   ]);
   const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
 
@@ -168,22 +171,24 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
 
 // Create variant
 router.post('/new', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
   const { name, headline, subheadline, cta_text, badge_text, vsl_type, vsl_url, trust_items } = req.body;
   const { data } = await supabase.from('variants').insert({
     name, headline, subheadline, cta_text, badge_text,
     vsl_type: vsl_type || 'none', vsl_url, trust_items,
+    owner: adminId,
     updated_at: new Date().toISOString()
   }).select().single();
 
-  // If first variant, auto-set as active
-  const activeId = await getSetting('rot_active_id');
+  // If first variant for this admin, auto-set as active in their rotation
+  const activeId = await getSetting(rotKey(adminId, 'active_id'));
   if (!activeId && data) {
     await Promise.all([
-      setSetting('rot_active_id', String(data.id)),
-      setSetting('rot_sequence', JSON.stringify([data.id])),
-      setSetting('rot_mode', 'manual'),
-      setSetting('rot_click_count', '0'),
-      setSetting('rot_started_at', new Date().toISOString()),
+      setSetting(rotKey(adminId, 'active_id'), String(data.id)),
+      setSetting(rotKey(adminId, 'sequence'), JSON.stringify([data.id])),
+      setSetting(rotKey(adminId, 'mode'), 'manual'),
+      setSetting(rotKey(adminId, 'click_count'), '0'),
+      setSetting(rotKey(adminId, 'started_at'), new Date().toISOString()),
     ]);
   }
   res.redirect('/admin/variants');
@@ -202,18 +207,22 @@ router.post('/:id/edit', requireAuth, async (req, res) => {
 
 // Set live (manual activation)
 router.post('/:id/activate', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
   const id = parseInt(req.params.id);
   await Promise.all([
-    setSetting('rot_active_id', String(id)),
-    setSetting('rot_click_count', '0'),
-    setSetting('rot_started_at', new Date().toISOString()),
+    setSetting(rotKey(adminId, 'active_id'), String(id)),
+    setSetting(rotKey(adminId, 'click_count'), '0'),
+    setSetting(rotKey(adminId, 'started_at'), new Date().toISOString()),
   ]);
   res.redirect('/admin/variants');
 });
 
 // Delete variant
 router.post('/:id/delete', requireAuth, async (req, res) => {
-  await supabase.from('variants').delete().eq('id', req.params.id);
+  const adminId = req.session.adminId || 'steven';
+  const owners = getAdminOwners(adminId);
+  // Only allow deleting variants that belong to this admin
+  await supabase.from('variants').delete().eq('id', req.params.id).in('owner', owners);
   res.redirect('/admin/variants');
 });
 
@@ -234,10 +243,12 @@ router.get('/:id/preview', requireAuth, async (req, res) => {
 
 // Rotation settings page
 router.get('/rotation', requireAuth, async (req, res) => {
-  const { data: variants } = await supabase.from('variants').select('id, name, enabled').order('created_at');
+  const adminId = req.session.adminId || 'steven';
+  const owners = getAdminOwners(adminId);
+  const { data: variants } = await supabase.from('variants').select('id, name, enabled').in('owner', owners).order('created_at');
   const [mode, sequenceRaw, activeId, clickThresh, timeHours] = await Promise.all([
-    getSetting('rot_mode'), getSetting('rot_sequence'), getSetting('rot_active_id'),
-    getSetting('rot_click_threshold'), getSetting('rot_time_hours'),
+    getSetting(rotKey(adminId,'mode')), getSetting(rotKey(adminId,'sequence')), getSetting(rotKey(adminId,'active_id')),
+    getSetting(rotKey(adminId,'click_threshold')), getSetting(rotKey(adminId,'time_hours')),
   ]);
   const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
 
@@ -335,6 +346,7 @@ router.get('/rotation', requireAuth, async (req, res) => {
 
 // Save rotation settings
 router.post('/rotation', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
   const { mode, click_threshold, time_hours } = req.body;
   // sequence comes as comma-separated string from hidden input (ordered)
   const seqRaw = req.body.sequence || '';
@@ -344,18 +356,18 @@ router.post('/rotation', requireAuth, async (req, res) => {
   }
 
   const saves = [
-    setSetting('rot_mode', mode),
-    setSetting('rot_sequence', JSON.stringify(sequence)),
-    setSetting('rot_click_threshold', click_threshold || '500'),
-    setSetting('rot_time_hours', time_hours || '168'),
-    setSetting('rot_click_count', '0'),
-    setSetting('rot_started_at', new Date().toISOString()),
+    setSetting(rotKey(adminId,'mode'), mode),
+    setSetting(rotKey(adminId,'sequence'), JSON.stringify(sequence)),
+    setSetting(rotKey(adminId,'click_threshold'), click_threshold || '500'),
+    setSetting(rotKey(adminId,'time_hours'), time_hours || '168'),
+    setSetting(rotKey(adminId,'click_count'), '0'),
+    setSetting(rotKey(adminId,'started_at'), new Date().toISOString()),
   ];
 
   // If active variant is not in new sequence, set first of sequence as active
-  const activeId = await getSetting('rot_active_id');
+  const activeId = await getSetting(rotKey(adminId,'active_id'));
   if (sequence.length > 0 && (!activeId || !sequence.includes(parseInt(activeId)))) {
-    saves.push(setSetting('rot_active_id', String(sequence[0])));
+    saves.push(setSetting(rotKey(adminId,'active_id'), String(sequence[0])));
   }
 
   await Promise.all(saves);

@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const supabase = require('../db');
 const layout = require('./admin-layout');
+const { getAdminAccounts, getAdminOwners, getAdminVariantIds, getAdminLinkSlugs, addLinkToAdmin, removeLinkFromAdmin } = require('./admin-utils');
 const { router: variantsRouter } = require('./admin-variants');
 const builderRouter = require('./admin-builder');
 const customRouter = require('./admin-custom');
@@ -45,8 +46,10 @@ router.get('/login', (req, res) => {
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
-  if (username === (process.env.ADMIN_USERNAME || 'admin') && password === (process.env.ADMIN_PASSWORD || 'changeme123')) {
+  const match = getAdminAccounts().find(a => username === a.username && password === a.password);
+  if (match) {
     req.session.admin = true;
+    req.session.adminId = match.adminId;
     return res.redirect('/admin/dashboard');
   }
   res.redirect('/admin/login?error=1');
@@ -57,20 +60,53 @@ router.get('/', requireAuth, (req, res) => res.redirect('/admin/dashboard'));
 
 // Dashboard
 router.get('/dashboard', requireAuth, async (req, res) => {
-  const [{ count: totalSignups }, { count: totalVisitors }, { count: totalLinks }] = await Promise.all([
-    supabase.from('signups').select('*', { count: 'exact', head: true }),
-    supabase.from('visitors').select('*', { count: 'exact', head: true }),
-    supabase.from('tracking_links').select('*', { count: 'exact', head: true }),
-  ]);
+  const adminId = req.session.adminId || 'steven';
+  const variantIds = await getAdminVariantIds(adminId);
+  const adminLinkSlugs = await getAdminLinkSlugs(adminId); // null = all (steven), [] = none yet (new admin)
+
+  // Scoped signup/visitor counts
+  let signupQ = supabase.from('signups').select('*', { count: 'exact', head: true });
+  let visitorQ = supabase.from('visitors').select('*', { count: 'exact', head: true });
+  if (variantIds.length > 0) {
+    signupQ = signupQ.in('variant_id', variantIds);
+    visitorQ = visitorQ.in('variant_id', variantIds);
+  } else if (adminId !== 'steven') {
+    // New admin with no variants yet — show zeros
+    signupQ = signupQ.eq('variant_id', -1);
+    visitorQ = visitorQ.eq('variant_id', -1);
+  }
+
+  // Scoped link count
+  let linkQ = supabase.from('tracking_links').select('*', { count: 'exact', head: true });
+  if (adminLinkSlugs !== null) linkQ = adminLinkSlugs.length > 0 ? linkQ.in('slug', adminLinkSlugs) : linkQ.eq('slug', '__none__');
+
+  const [{ count: totalSignups }, { count: totalVisitors }, { count: totalLinks }] = await Promise.all([signupQ, visitorQ, linkQ]);
 
   const today = new Date().toISOString().slice(0, 10);
-  const { count: todaySignups } = await supabase.from('signups').select('*', { count: 'exact', head: true }).gte('signed_up_at', today);
-  const { data: recentSignups } = await supabase.from('signups').select('*').order('signed_up_at', { ascending: false }).limit(10);
-  const { data: links } = await supabase.from('tracking_links').select('*');
+  let todayQ = supabase.from('signups').select('*', { count: 'exact', head: true }).gte('signed_up_at', today);
+  if (variantIds.length > 0) todayQ = todayQ.in('variant_id', variantIds);
+  else if (adminId !== 'steven') todayQ = todayQ.eq('variant_id', -1);
+  const { count: todaySignups } = await todayQ;
 
-  // Get visit/conversion counts per link
-  const { data: visitCounts } = await supabase.from('visitors').select('tracking_slug');
-  const { data: signupCounts } = await supabase.from('signups').select('tracking_slug');
+  let recentQ = supabase.from('signups').select('*').order('signed_up_at', { ascending: false }).limit(10);
+  if (variantIds.length > 0) recentQ = recentQ.in('variant_id', variantIds);
+  else if (adminId !== 'steven') recentQ = recentQ.eq('variant_id', -1);
+  const { data: recentSignups } = await recentQ;
+
+  // Scoped tracking links
+  let linksQ = supabase.from('tracking_links').select('*');
+  if (adminLinkSlugs !== null) linksQ = adminLinkSlugs.length > 0 ? linksQ.in('slug', adminLinkSlugs) : linksQ.eq('slug', '__none__');
+  const { data: links } = await linksQ;
+
+  // Scoped visit/conversion counts per link
+  const slugList = (links || []).map(l => l.slug);
+  let visitCounts = [], signupCounts = [];
+  if (slugList.length > 0) {
+    [{ data: visitCounts }, { data: signupCounts }] = await Promise.all([
+      supabase.from('visitors').select('tracking_slug').in('tracking_slug', slugList),
+      supabase.from('signups').select('tracking_slug').in('tracking_slug', slugList),
+    ]);
+  }
   const vMap = {}, sMap = {};
   (visitCounts || []).forEach(v => { vMap[v.tracking_slug] = (vMap[v.tracking_slug] || 0) + 1; });
   (signupCounts || []).forEach(s => { sMap[s.tracking_slug] = (sMap[s.tracking_slug] || 0) + 1; });
@@ -94,6 +130,8 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 
 // Signups
 router.get('/signups', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const variantIds = await getAdminVariantIds(adminId);
   const page = parseInt(req.query.page || '1');
   const limit = 50;
   const from = (page - 1) * limit;
@@ -101,11 +139,18 @@ router.get('/signups', requireAuth, async (req, res) => {
   const filter = req.query.ref || '';
 
   let query = supabase.from('signups').select('*', { count: 'exact' }).order('signed_up_at', { ascending: false }).range(from, from + limit - 1);
+  // Scope to admin's variants
+  if (variantIds.length > 0) query = query.in('variant_id', variantIds);
+  else if (adminId !== 'steven') query = query.eq('variant_id', -1);
   if (filter) query = query.eq('tracking_slug', filter);
   if (search) query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
 
   const { data: signups, count: total } = await query;
-  const { data: slugs } = await supabase.from('signups').select('tracking_slug').not('tracking_slug', 'is', null);
+  // Scope slug filter options to admin's signups
+  let slugQuery = supabase.from('signups').select('tracking_slug').not('tracking_slug', 'is', null);
+  if (variantIds.length > 0) slugQuery = slugQuery.in('variant_id', variantIds);
+  else if (adminId !== 'steven') slugQuery = slugQuery.eq('variant_id', -1);
+  const { data: slugs } = await slugQuery;
   const uniqueSlugs = [...new Set((slugs || []).map(s => s.tracking_slug))];
 
   const rows = (signups || []).map(s => `<tr><td>${s.id}</td><td>${s.name || '—'}</td><td><strong>${s.email}</strong></td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td style="font-size:13px">${s.country || `<span style="font-family:monospace;font-size:11px;color:#64748b">${s.ip}</span>`}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
@@ -129,7 +174,12 @@ router.get('/signups', requireAuth, async (req, res) => {
 
 // Export CSV
 router.get('/signups/export', requireAuth, async (req, res) => {
-  const { data: signups } = await supabase.from('signups').select('*').order('signed_up_at', { ascending: false });
+  const adminId = req.session.adminId || 'steven';
+  const variantIds = await getAdminVariantIds(adminId);
+  let q = supabase.from('signups').select('*').order('signed_up_at', { ascending: false });
+  if (variantIds.length > 0) q = q.in('variant_id', variantIds);
+  else if (adminId !== 'steven') q = q.eq('variant_id', -1);
+  const { data: signups } = await q;
   const rows = [
     ['ID', 'Name', 'Email', 'Source', 'IP', 'Signed Up'].join(','),
     ...(signups || []).map(s => [s.id, `"${(s.name||'').replace(/"/g,'""')}"`, `"${s.email}"`, s.tracking_slug||'direct', s.ip, new Date(s.signed_up_at).toISOString()].join(','))
@@ -321,9 +371,19 @@ router.post('/testimonials/:id/delete', requireAuth, async (req, res) => {
 
 // Tracking Links
 router.get('/tracking', requireAuth, async (req, res) => {
-  const { data: links } = await supabase.from('tracking_links').select('*').order('created_at', { ascending: false });
-  const { data: visits } = await supabase.from('visitors').select('tracking_slug');
-  const { data: sigs } = await supabase.from('signups').select('tracking_slug');
+  const adminId = req.session.adminId || 'steven';
+  const adminLinkSlugs = await getAdminLinkSlugs(adminId);
+  let linksQ = supabase.from('tracking_links').select('*').order('created_at', { ascending: false });
+  if (adminLinkSlugs !== null) linksQ = adminLinkSlugs.length > 0 ? linksQ.in('slug', adminLinkSlugs) : linksQ.eq('slug', '__none__');
+  const { data: links } = await linksQ;
+  const slugList = (links || []).map(l => l.slug);
+  let visits = [], sigs = [];
+  if (slugList.length > 0) {
+    [{ data: visits }, { data: sigs }] = await Promise.all([
+      supabase.from('visitors').select('tracking_slug').in('tracking_slug', slugList),
+      supabase.from('signups').select('tracking_slug').in('tracking_slug', slugList),
+    ]);
+  }
   const vMap = {}, sMap = {};
   (visits||[]).forEach(v => { vMap[v.tracking_slug] = (vMap[v.tracking_slug]||0)+1; });
   (sigs||[]).forEach(s => { sMap[s.tracking_slug] = (sMap[s.tracking_slug]||0)+1; });
@@ -366,16 +426,21 @@ router.get('/tracking', requireAuth, async (req, res) => {
 });
 
 router.post('/tracking', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
   const { slug, name, destination } = req.body;
   const clean = slug.toLowerCase().replace(/[^a-z0-9-_]/g, '');
   if (!clean) return res.redirect('/admin/tracking');
   const { data: existing } = await supabase.from('tracking_links').select('id').eq('slug', clean).single();
   if (existing) return res.redirect('/admin/tracking?msg=exists');
   await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/' });
+  await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
 });
 
 router.post('/tracking/:id/delete', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const { data: link } = await supabase.from('tracking_links').select('slug').eq('id', req.params.id).single();
+  if (link) await removeLinkFromAdmin(adminId, link.slug);
   await supabase.from('tracking_links').delete().eq('id', req.params.id);
   res.redirect('/admin/tracking?msg=deleted');
 });

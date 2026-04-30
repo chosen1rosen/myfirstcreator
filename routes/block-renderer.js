@@ -8,6 +8,7 @@ const BLOCK_TYPES = [
   { type: 'features',      label: '⚡ Features Grid' },
   { type: 'image_text',    label: '🖼️ Image + Text' },
   { type: 'cta_banner',    label: '🚀 CTA Banner' },
+  { type: 'calendar_add',  label: '📅 Add to Calendar' },
   { type: 'html',          label: '💻 Custom HTML' },
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
@@ -23,8 +24,9 @@ function renderBlock(block, testimonialData = []) {
     case 'features': return renderFeatures(block);
     case 'image_text': return renderImageText(block);
     case 'cta_banner': return renderCTABanner(block);
+    case 'calendar_add': return renderCalendarAdd(block);
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
-    default: return '';
+    default: return ''
   }
 }
 
@@ -141,6 +143,46 @@ function renderImageText(b) {
   </section>`;
 }
 
+function renderCalendarAdd(b) {
+  const btnText = b.button_text || 'Add to Calendar';
+  const calLinks = [
+    { type: 'google',    label: '🗓 Google' },
+    { type: 'apple',     label: '🍎 Apple' },
+    { type: 'outlook',   label: '📧 Outlook' },
+    { type: 'yahoo',     label: '📌 Yahoo' },
+    { type: 'office365', label: '🏢 Office 365' },
+    { type: 'ical',      label: '⬇️ iCal' },
+  ];
+  const uid = `cal_${Math.random().toString(36).slice(2, 7)}`;
+  return `
+  <section class="block-calendar" style="padding:64px 20px;text-align:center">
+    <div class="container">
+      ${b.label ? `<div class="section-label" style="margin-bottom:12px">${b.label}</div>` : ''}
+      ${b.title ? `<h2 style="font-size:clamp(22px,3.5vw,32px);font-weight:700;margin-bottom:8px">${b.title}</h2>` : ''}
+      ${b.subtitle ? `<p style="color:#94a3b8;margin-bottom:32px;font-size:16px">${b.subtitle}</p>` : ''}
+      <div style="max-width:480px;margin:0 auto">
+        <button id="${uid}-btn" onclick="(function(uid){var opts=document.getElementById(uid+'-opts');opts.style.display=opts.style.display==='flex'?'none':'flex';document.getElementById(uid+'-btn').textContent=opts.style.display==='flex'?'📅 Choose your calendar':'📅 ${btnText}'})('${uid}')" style="width:100%;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.5);color:#a78bfa;padding:18px 32px;border-radius:14px;font-size:18px;font-weight:700;cursor:pointer;transition:.2s">📅 ${btnText}</button>
+        <div id="${uid}-opts" style="margin-top:12px;display:none;flex-wrap:wrap;gap:10px;justify-content:center">
+          ${calLinks.map(o => `<a href="#" data-caltype="${o.type}" class="${uid}-link" target="_blank" style="display:inline-block;padding:12px 20px;background:#12121f;border:1px solid #1e1e30;border-radius:10px;color:#e2e8f0;text-decoration:none;font-size:14px;font-weight:500;min-width:130px;text-align:center">${o.label}</a>`).join('\n          ')}
+        </div>
+        <p style="color:#475569;font-size:13px;margin-top:8px">Google · Apple · Outlook · Yahoo · and more</p>
+      </div>
+    </div>
+  </section>
+  <script>
+    (function(){
+      fetch('/api/addcal/event').then(r=>r.json()).then(({event})=>{
+        if(!event||!event.links) return;
+        document.querySelectorAll('.${uid}-link').forEach(function(a){
+          var type=a.dataset.caltype;
+          var href=event.links[type]||(type==='ical'?event.links.other:null);
+          if(href){a.href=href;}else{a.style.display='none';}
+        });
+      }).catch(function(){});
+    })();
+  </script>`;
+}
+
 function renderCTABanner(b) {
   const bg = b.bg_color || 'linear-gradient(135deg,#7c3aed,#06b6d4)';
   return `
@@ -214,6 +256,7 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
         body: JSON.stringify({ name: nameEl?.value||'', email: document.getElementById('sig-email').value })
       });
       const data = await res.json();
+      if (data.redirect) { window.location.href = data.redirect; return; }
       const msg = document.getElementById('success-msg');
       msg.textContent = data.message || "You're in!"; msg.style.display = 'block';
       btn.textContent = '${ctaText}'; btn.disabled = false;

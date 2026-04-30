@@ -64,6 +64,7 @@ module.exports = (title, content, activePage = '') => `<!DOCTYPE html>
     <a href="/admin/settings" class="${activePage === 'settings' ? 'active' : ''}">⚙️ Site Settings</a>
     <div class="sidebar-section">Growth</div>
     <a href="/admin/tracking" class="${activePage === 'tracking' ? 'active' : ''}">🔗 Tracking Links</a>
+    <a href="/admin/events" class="${activePage === 'events' ? 'active' : ''}">📅 Events & Calendar</a>
     <a href="/" target="_blank" style="margin-top:16px">🌐 View Site</a>
     <a href="/admin/logout">🚪 Logout</a>
   </nav>

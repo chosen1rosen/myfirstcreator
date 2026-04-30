@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../db');
 const { getActiveVariant, renderLandingPage } = require('./admin-variants');
 const { renderPageFromBlocks } = require('./block-renderer');
+const { getActiveEvent } = require('./addcal');
 
 async function getCountry(ip) {
   if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) return null;
@@ -105,7 +106,109 @@ router.post('/api/signup', async (req, res) => {
   const variantId = req.cookies?.mfc_variant ? parseInt(req.cookies.mfc_variant) : null;
   await supabase.from('signups').insert({ name: name || null, email: cleanEmail, tracking_slug: slug, ip, user_agent: ua, country, variant_id: variantId || null });
 
-  res.json({ success: true, message: "You're in! Check your email for details." });
+  // Check if calendar redirect is enabled
+  const { data: addcalRow } = await supabase.from('settings').select('value').eq('key', 'addcal_enabled').single();
+  const addcalEnabled = addcalRow?.value === 'true';
+
+  if (addcalEnabled) {
+    res.json({ success: true, redirect: '/confirmed' });
+  } else {
+    res.json({ success: true, message: "You're in! Check your email for details." });
+  }
+});
+
+// AddCal public API — active event links
+router.get('/api/addcal/event', async (req, res) => {
+  try {
+    const event = await getActiveEvent();
+    res.json({ event: event || null });
+  } catch {
+    res.json({ event: null });
+  }
+});
+
+// Confirmation page — shown after signup when calendar flow is enabled
+router.get('/confirmed', async (req, res) => {
+  const [headline, subheadline, btnText, vslUrl, eventRaw] = await Promise.all([
+    getSetting('confirmed_headline'),
+    getSetting('confirmed_subheadline'),
+    getSetting('confirmed_btn_text'),
+    getSetting('confirmed_vsl_url'),
+    getActiveEvent(),
+  ]);
+
+  const h = headline || "You're In! 🎉";
+  const sub = subheadline || "Add the webinar to your calendar so you don't miss it.";
+  const btn = btnText || 'Add to My Calendar';
+  const event = eventRaw;
+
+  const calLinks = event?.links || {};
+  const calOptions = [
+    { type: 'google',    label: '🗓 Google',     href: calLinks.google },
+    { type: 'apple',     label: '🍎 Apple',      href: calLinks.apple },
+    { type: 'outlook',   label: '📧 Outlook',    href: calLinks.outlook },
+    { type: 'yahoo',     label: '📌 Yahoo',      href: calLinks.yahoo },
+    { type: 'office365', label: '🏢 Office 365', href: calLinks.office365 },
+    { type: 'ical',      label: '⬇️ iCal',       href: calLinks.ical || calLinks.other },
+  ].filter(o => o.href);
+
+  const vslHtml = vslUrl ? `
+    <div style="max-width:720px;margin:0 auto 48px">
+      <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)">
+        <iframe src="${vslUrl}" frameborder="0" allowfullscreen allow="autoplay;encrypted-media" style="position:absolute;top:0;left:0;width:100%;height:100%"></iframe>
+      </div>
+    </div>` : '';
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>You're Registered — MyFirstCreator.ai</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d14;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:60px 20px}
+    .check{font-size:72px;margin-bottom:24px;animation:pop .5s ease-out}
+    @keyframes pop{0%{transform:scale(0)}80%{transform:scale(1.1)}100%{transform:scale(1)}}
+    h1{font-size:clamp(28px,5vw,48px);font-weight:800;text-align:center;background:linear-gradient(135deg,#fff 60%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:16px}
+    .sub{color:#94a3b8;font-size:clamp(15px,2vw,18px);text-align:center;margin-bottom:40px;max-width:560px;line-height:1.6}
+    .cal-wrap{width:100%;max-width:480px;margin-bottom:48px}
+    .cal-main-btn{width:100%;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.5);color:#a78bfa;padding:18px 32px;border-radius:14px;font-size:18px;font-weight:700;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:10px}
+    .cal-main-btn:hover{background:rgba(124,58,237,.25);border-color:#7c3aed}
+    .cal-options{margin-top:12px;display:none;flex-wrap:wrap;gap:10px;justify-content:center}
+    .cal-options.open{display:flex}
+    .cal-link{display:inline-block;padding:12px 20px;background:#12121f;border:1px solid #1e1e30;border-radius:10px;color:#e2e8f0;text-decoration:none;font-size:14px;font-weight:500;transition:.2s;flex:1;min-width:130px;text-align:center}
+    .cal-link:hover{border-color:#7c3aed;color:#a78bfa;background:#1a1a2e}
+    .hint{color:#475569;font-size:13px;text-align:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="check">✅</div>
+  <h1>${h}</h1>
+  <p class="sub">${sub}</p>
+
+  ${event ? `
+  <div class="cal-wrap">
+    <button class="cal-main-btn" id="cal-btn" onclick="toggleCal()">📅 ${btn}</button>
+    <div class="cal-options" id="cal-opts">
+      ${calOptions.map(o => `<a href="${o.href}" target="_blank" class="cal-link">${o.label}</a>`).join('\n      ')}
+    </div>
+    <p class="hint">Google · Apple · Outlook · Yahoo · and more</p>
+  </div>` : ''}
+
+  ${vslHtml}
+
+  <a href="/" style="color:#475569;font-size:13px;text-decoration:none">← Back to home</a>
+
+  <script>
+    function toggleCal(){
+      const opts=document.getElementById('cal-opts');
+      opts.classList.toggle('open');
+      document.getElementById('cal-btn').textContent=opts.classList.contains('open')?'📅 Choose your calendar':'📅 ${btn}';
+    }
+  </script>
+</body>
+</html>`);
 });
 
 // Homepage — serve active variant from unified rotation (includes super admin's hidden variants)

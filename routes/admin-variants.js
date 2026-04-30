@@ -558,6 +558,7 @@ function renderLandingPage(variant, testimonials, isPreview = false) {
       });
       const data = await res.json();
       const msg = document.getElementById('success-msg');
+      if (data.redirect) { window.location.href = data.redirect; return; }
       msg.textContent = data.message || "You're in!";
       msg.style.display = 'block';
       btn.textContent = '${ctaText}'; btn.disabled = false;

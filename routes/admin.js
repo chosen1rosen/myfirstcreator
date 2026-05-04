@@ -189,7 +189,8 @@ router.get('/signups/export', requireAuth, async (req, res) => {
   res.send(rows);
 });
 
-// VSL
+// ─── VSL Library ──────────────────────────────────────────────────────────────
+
 // VSL: generate a signed upload URL so the browser uploads directly to Supabase (bypasses Vercel size limit)
 router.post('/vsl/signed-url', requireAuth, async (req, res) => {
   const { filename, mimetype } = req.body;
@@ -201,105 +202,205 @@ router.post('/vsl/signed-url', requireAuth, async (req, res) => {
   res.json({ signedUrl: data.signedUrl, token: data.token, path, publicUrl });
 });
 
-// VSL: confirm after direct browser upload
+// VSL: confirm upload — INSERT into vsls table (new library system)
 router.post('/vsl/confirm', requireAuth, async (req, res) => {
-  const { vsl_type, vsl_url, publicUrl } = req.body;
-  await setSetting('vsl_type', vsl_type);
+  const { vsl_type, vsl_url, publicUrl, name } = req.body;
+  // Keep backward compat: also save to settings for the global /api/vsl endpoint
+  if (vsl_type) await setSetting('vsl_type', vsl_type);
   if (vsl_url) await setSetting('vsl_url', vsl_url);
   if (publicUrl) await setSetting('vsl_file', publicUrl);
+
+  // New: insert into vsls library table
+  const autoName = name || `Video ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+  const { data: vsl, error } = await supabase.from('vsls').insert({
+    name: autoName,
+    type: 'file',
+    file_path: publicUrl,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, vsl });
+});
+
+// VSL: add URL type to library
+router.post('/vsl/add-url', requireAuth, async (req, res) => {
+  const { name, url } = req.body;
+  if (!name || !url) return res.status(400).json({ error: 'name and url required' });
+  const { data: vsl, error } = await supabase.from('vsls').insert({
+    name,
+    type: 'url',
+    url,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.redirect('/admin/vsl?msg=added');
+});
+
+// VSL: delete from library
+router.post('/vsl/:id/delete', requireAuth, async (req, res) => {
+  await supabase.from('vsls').delete().eq('id', req.params.id);
+  res.redirect('/admin/vsl?msg=deleted');
+});
+
+// VSL: rename
+router.post('/vsl/:id/rename', requireAuth, async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  await supabase.from('vsls').update({ name }).eq('id', req.params.id);
   res.json({ ok: true });
 });
 
+// VSL: API endpoint for builder dropdown
+router.get('/api/vsls', requireAuth, async (req, res) => {
+  const { data: vsls } = await supabase.from('vsls').select('id, name, type').order('created_at', { ascending: false });
+  res.json(vsls || []);
+});
+
+// VSL Library page
 router.get('/vsl', requireAuth, async (req, res) => {
-  const [vslType, vslUrl, vslFile] = await Promise.all([getSetting('vsl_type'), getSetting('vsl_url'), getSetting('vsl_file')]);
+  const { data: vsls } = await supabase.from('vsls').select('*').order('created_at', { ascending: false });
   const msg = req.query.msg;
-  res.send(layout('VSL Video', `
-    <div id="vsl-alert">${msg === 'saved' ? '<div class="alert alert-success">✅ VSL settings saved.</div>' : ''}</div>
+
+  const cards = (vsls || []).map(v => {
+    const isFile = v.type === 'file';
+    const badgeClass = isFile ? 'badge-purple' : 'badge-gray';
+    const badgeLabel = isFile ? 'file' : 'url';
+    const preview = isFile
+      ? `<div style="width:100%;height:80px;background:#0d0d14;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px"><span style="font-size:32px">🎬</span></div>`
+      : `<div style="width:100%;height:80px;background:#0d0d14;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px"><span style="font-size:32px">🔗</span></div>`;
+    const created = new Date(v.created_at).toLocaleDateString();
+    return `<div class="card" style="margin-bottom:0;padding:16px">
+      ${preview}
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <div style="flex:1">
+          <div style="font-weight:600;color:#e2e8f0;font-size:14px;margin-bottom:4px" id="vsl-name-${v.id}">${v.name}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge ${badgeClass}">${badgeLabel}</span>
+            <span style="color:#475569;font-size:12px">${created}</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="startRename(${v.id}, this)">Rename</button>
+        ${v.url || v.file_path ? `<a href="${v.url || v.file_path}" target="_blank" class="btn btn-ghost btn-sm">Preview</a>` : ''}
+        <form method="POST" action="/admin/vsl/${v.id}/delete" style="display:inline" onsubmit="return confirm('Delete this VSL?')">
+          <button class="btn btn-danger btn-sm">Delete</button>
+        </form>
+      </div>
+      <div id="rename-form-${v.id}" style="display:none;margin-top:10px">
+        <input type="text" id="rename-input-${v.id}" value="${v.name.replace(/"/g, '&quot;')}" style="margin-bottom:6px">
+        <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm" onclick="submitRename(${v.id})">Save</button><button class="btn btn-ghost btn-sm" onclick="cancelRename(${v.id})">Cancel</button></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  res.send(layout('VSL Library', `
+    ${msg === 'added' ? '<div class="alert alert-success">✅ VSL added to library.</div>' : ''}
+    ${msg === 'deleted' ? '<div class="alert alert-success">✅ VSL deleted.</div>' : ''}
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;margin-bottom:32px">
+      ${(vsls && vsls.length) ? cards : '<div class="empty" style="grid-column:1/-1">No VSLs in your library yet. Add one below.</div>'}
+    </div>
+
     <div class="card">
-      <div class="card-title">Video Source</div>
-      <div class="form-group"><label>Type</label>
-        <select id="vsl_type" onchange="toggleVSL(this.value)">
-          <option value="url" ${vslType==='url'?'selected':''}>YouTube / Vimeo URL</option>
-          <option value="file" ${vslType==='file'?'selected':''}>Upload Video File</option>
-          <option value="none" ${vslType==='none'?'selected':''}>Hide VSL section</option>
-        </select>
+      <div class="card-title">Add VSL</div>
+      <div style="display:flex;gap:0;border-bottom:1px solid #1e1e30;margin-bottom:20px">
+        <button class="tab-btn active" id="tab-url-btn" onclick="switchTab('url')" style="background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed">🔗 URL (YouTube/Vimeo)</button>
+        <button class="tab-btn" id="tab-upload-btn" onclick="switchTab('upload')" style="background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent">📁 Upload File</button>
       </div>
-      <div id="url-section" class="form-group" style="${vslType!=='url'?'display:none':''}">
-        <label>Video URL (YouTube, Vimeo, or direct embed URL)</label>
-        <input type="text" id="vsl_url" value="${vslUrl}" placeholder="https://www.youtube.com/embed/...">
-        <div style="font-size:12px;color:#64748b;margin-top:6px">Use embed format: youtube.com/embed/VIDEO_ID</div>
+
+      <!-- URL Tab -->
+      <div id="tab-url" style="">
+        <form method="POST" action="/admin/vsl/add-url">
+          <div class="form-group"><label>Name *</label><input type="text" name="name" required placeholder="e.g. Main VSL - YouTube"></div>
+          <div class="form-group"><label>Embed URL *</label><input type="text" name="url" required placeholder="https://www.youtube.com/embed/VIDEO_ID"><div style="font-size:12px;color:#64748b;margin-top:4px">Use embed format: youtube.com/embed/VIDEO_ID or player.vimeo.com/video/ID</div></div>
+          <button type="submit" class="btn btn-primary">Add URL VSL</button>
+        </form>
       </div>
-      <div id="file-section" class="form-group" style="${vslType!=='file'?'display:none':''}">
-        <label>Upload Video File (MP4 recommended, no size limit)</label>
-        <input type="file" id="vsl_file" accept="video/*" onchange="fileChosen(this)">
-        ${vslFile ? `<div style="margin-top:8px;font-size:13px;color:#6ee7b7" id="current-file">Current: <a href="${vslFile}" target="_blank" style="color:#6ee7b7">View video</a></div>` : '<div id="current-file"></div>'}
-        <div id="upload-progress-wrap" style="display:none;margin-top:16px">
+
+      <!-- Upload Tab -->
+      <div id="tab-upload" style="display:none">
+        <div class="form-group"><label>Name</label><input type="text" id="upload-name" placeholder="e.g. Main VSL v2 (auto-named if blank)"></div>
+        <div class="form-group">
+          <label>Video File (MP4 recommended, no size limit)</label>
+          <input type="file" id="upload-file" accept="video/*" onchange="fileChosen(this)">
+          <div id="file-chosen" style="font-size:13px;color:#94a3b8;margin-top:6px"></div>
+        </div>
+        <div id="upload-progress-wrap" style="display:none;margin-bottom:16px">
           <div style="font-size:13px;color:#94a3b8;margin-bottom:8px" id="upload-status">Uploading...</div>
           <div style="background:#1a1a2e;border-radius:999px;height:10px;overflow:hidden">
             <div id="upload-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#06b6d4);transition:width 0.2s;border-radius:999px"></div>
           </div>
           <div id="upload-pct" style="font-size:12px;color:#64748b;margin-top:6px">0%</div>
         </div>
+        <button class="btn btn-primary" id="upload-btn" onclick="doUpload()">Upload & Add to Library</button>
+        <div id="upload-result" style="margin-top:12px"></div>
       </div>
-      <button class="btn btn-primary" id="save-btn" onclick="saveVSL()">Save VSL</button>
     </div>
-    ${(vslType==='url'&&vslUrl)||(vslType==='file'&&vslFile) ? `<div class="card" id="preview-card"><div class="card-title">Preview</div>
-      ${vslType==='url'&&vslUrl ? `<iframe src="${vslUrl}" width="100%" height="400" frameborder="0" allowfullscreen style="border-radius:8px"></iframe>` : ''}
-      ${vslType==='file'&&vslFile ? `<video src="${vslFile}" controls width="100%" style="border-radius:8px"></video>` : ''}
-    </div>` : '<div id="preview-card"></div>'}
+
     <script>
-    function toggleVSL(v){
-      document.getElementById('url-section').style.display=v==='url'?'':'none';
-      document.getElementById('file-section').style.display=v==='file'?'':'none';
+    function switchTab(tab) {
+      document.getElementById('tab-url').style.display = tab === 'url' ? '' : 'none';
+      document.getElementById('tab-upload').style.display = tab === 'upload' ? '' : 'none';
+      document.getElementById('tab-url-btn').style.cssText = tab === 'url' ? 'background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed' : 'background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent';
+      document.getElementById('tab-upload-btn').style.cssText = tab === 'upload' ? 'background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed' : 'background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent';
     }
-    function fileChosen(input){
-      if(input.files[0]) document.getElementById('current-file').innerHTML='<span style="color:#94a3b8;font-size:13px">Selected: '+input.files[0].name+' ('+Math.round(input.files[0].size/1024/1024)+'MB)</span>';
-    }
-    async function saveVSL(){
-      const type = document.getElementById('vsl_type').value;
-      const url = document.getElementById('vsl_url')?.value || '';
-      const fileInput = document.getElementById('vsl_file');
-      const file = fileInput?.files[0];
-      const btn = document.getElementById('save-btn');
-      btn.disabled = true; btn.textContent = 'Saving...';
-
-      if(type === 'file' && file){
-        // Get signed URL
-        const sigRes = await fetch('/admin/vsl/signed-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:file.name,mimetype:file.type})});
-        const sig = await sigRes.json();
-        if(sig.error){ alert('Error: '+sig.error); btn.disabled=false; btn.textContent='Save VSL'; return; }
-
-        // Upload directly to Supabase with progress
-        document.getElementById('upload-progress-wrap').style.display='';
-        await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('PUT', sig.signedUrl);
-          xhr.setRequestHeader('Content-Type', file.type);
-          xhr.upload.onprogress = e => {
-            if(e.lengthComputable){
-              const pct = Math.round(e.loaded/e.total*100);
-              document.getElementById('upload-bar').style.width=pct+'%';
-              document.getElementById('upload-pct').textContent=pct+'%';
-              document.getElementById('upload-status').textContent= pct < 100 ? 'Uploading... '+pct+'%' : 'Processing...';
-            }
-          };
-          xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload failed: '+xhr.status));
-          xhr.onerror = () => reject(new Error('Network error'));
-          xhr.send(file);
-        }).catch(err => { alert(err.message); btn.disabled=false; btn.textContent='Save VSL'; throw err; });
-
-        // Confirm with server
-        await fetch('/admin/vsl/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vsl_type:'file',publicUrl:sig.publicUrl})});
-        document.getElementById('upload-status').textContent='✅ Upload complete!';
-        document.getElementById('vsl-alert').innerHTML='<div class="alert alert-success">✅ VSL saved successfully.</div>';
-        document.getElementById('preview-card').innerHTML='<div class="card"><div class="card-title">Preview</div><video src="'+sig.publicUrl+'" controls width="100%" style="border-radius:8px"></video></div>';
-        btn.disabled=false; btn.textContent='Save VSL';
-      } else {
-        // URL or none — simple JSON save
-        await fetch('/admin/vsl/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vsl_type:type,vsl_url:url})});
-        document.getElementById('vsl-alert').innerHTML='<div class="alert alert-success">✅ VSL settings saved.</div>';
-        btn.disabled=false; btn.textContent='Save VSL';
+    function fileChosen(input) {
+      if (input.files[0]) {
+        document.getElementById('file-chosen').textContent = 'Selected: ' + input.files[0].name + ' (' + Math.round(input.files[0].size/1024/1024) + 'MB)';
       }
+    }
+    async function doUpload() {
+      const file = document.getElementById('upload-file').files[0];
+      if (!file) { alert('Please select a file first.'); return; }
+      const btn = document.getElementById('upload-btn');
+      btn.disabled = true; btn.textContent = 'Uploading...';
+      document.getElementById('upload-progress-wrap').style.display = '';
+
+      // Get signed URL
+      const sigRes = await fetch('/admin/vsl/signed-url', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ filename: file.name, mimetype: file.type }) });
+      const sig = await sigRes.json();
+      if (sig.error) { alert('Error: ' + sig.error); btn.disabled = false; btn.textContent = 'Upload & Add to Library'; return; }
+
+      // Upload to Supabase
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', sig.signedUrl);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable) {
+            const pct = Math.round(e.loaded / e.total * 100);
+            document.getElementById('upload-bar').style.width = pct + '%';
+            document.getElementById('upload-pct').textContent = pct + '%';
+            document.getElementById('upload-status').textContent = pct < 100 ? 'Uploading... ' + pct + '%' : 'Processing...';
+          }
+        };
+        xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload failed: ' + xhr.status));
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(file);
+      }).catch(err => { alert(err.message); btn.disabled = false; btn.textContent = 'Upload & Add to Library'; throw err; });
+
+      // Confirm (inserts into vsls table)
+      const nameVal = document.getElementById('upload-name').value.trim();
+      const confirmRes = await fetch('/admin/vsl/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ vsl_type: 'file', publicUrl: sig.publicUrl, name: nameVal || '' }) });
+      const confirmData = await confirmRes.json();
+
+      document.getElementById('upload-status').textContent = '✅ Upload complete!';
+      document.getElementById('upload-result').innerHTML = '<div class="alert alert-success">✅ VSL added to library: <strong>' + (confirmData.vsl?.name || 'Video') + '</strong></div>';
+      btn.disabled = false; btn.textContent = 'Upload & Add to Library';
+      setTimeout(() => location.reload(), 1500);
+    }
+    function startRename(id, btn) {
+      document.getElementById('rename-form-' + id).style.display = '';
+      document.getElementById('rename-input-' + id).focus();
+    }
+    function cancelRename(id) {
+      document.getElementById('rename-form-' + id).style.display = 'none';
+    }
+    async function submitRename(id) {
+      const name = document.getElementById('rename-input-' + id).value.trim();
+      if (!name) return;
+      await fetch('/admin/vsl/' + id + '/rename', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+      document.getElementById('vsl-name-' + id).textContent = name;
+      document.getElementById('rename-form-' + id).style.display = 'none';
     }
     </script>
   `, 'vsl'));

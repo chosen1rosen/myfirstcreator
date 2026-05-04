@@ -158,24 +158,40 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // New variant form
-router.get('/new', requireAuth, (req, res) => {
-  res.send(layout('New Variant', variantForm({}), 'variants'));
+router.get('/new', requireAuth, async (req, res) => {
+  const { data: vsls } = await supabase.from('vsls').select('id, name, type').order('created_at', { ascending: false });
+  res.send(layout('New Variant', variantForm({}, vsls || []), 'variants'));
 });
 
 // Edit variant form
 router.get('/:id/edit', requireAuth, async (req, res) => {
-  const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
+  const [{ data: v }, { data: vsls }] = await Promise.all([
+    supabase.from('variants').select('*').eq('id', req.params.id).single(),
+    supabase.from('vsls').select('id, name, type').order('created_at', { ascending: false }),
+  ]);
   if (!v) return res.redirect('/admin/variants');
-  res.send(layout(`Edit: ${v.name}`, variantForm(v), 'variants'));
+  res.send(layout(`Edit: ${v.name}`, variantForm(v, vsls || []), 'variants'));
 });
 
 // Create variant
 router.post('/new', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const { name, headline, subheadline, cta_text, badge_text, vsl_type, vsl_url, trust_items } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
+  // Determine VSL fields based on picker selection
+  let resolvedVslType = 'none';
+  let resolvedVslUrl = null;
+  let resolvedVslId = null;
+  if (vsl_source === 'library' && vsl_id) {
+    resolvedVslId = parseInt(vsl_id);
+    resolvedVslType = 'library';
+  } else if (vsl_source === 'url' && vsl_url) {
+    resolvedVslType = 'url';
+    resolvedVslUrl = vsl_url;
+  }
   const { data } = await supabase.from('variants').insert({
     name, headline, subheadline, cta_text, badge_text,
-    vsl_type: vsl_type || 'none', vsl_url, trust_items,
+    vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
+    trust_items,
     owner: adminId,
     updated_at: new Date().toISOString()
   }).select().single();
@@ -196,10 +212,22 @@ router.post('/new', requireAuth, async (req, res) => {
 
 // Update variant
 router.post('/:id/edit', requireAuth, async (req, res) => {
-  const { name, headline, subheadline, cta_text, badge_text, vsl_type, vsl_url, trust_items } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
+  // Determine VSL fields based on picker selection
+  let resolvedVslType = 'none';
+  let resolvedVslUrl = null;
+  let resolvedVslId = null;
+  if (vsl_source === 'library' && vsl_id) {
+    resolvedVslId = parseInt(vsl_id);
+    resolvedVslType = 'library';
+  } else if (vsl_source === 'url' && vsl_url) {
+    resolvedVslType = 'url';
+    resolvedVslUrl = vsl_url;
+  }
   await supabase.from('variants').update({
     name, headline, subheadline, cta_text, badge_text,
-    vsl_type: vsl_type || 'none', vsl_url, trust_items,
+    vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
+    trust_items,
     updated_at: new Date().toISOString()
   }).eq('id', req.params.id);
   res.redirect('/admin/variants');
@@ -231,13 +259,19 @@ router.get('/:id/preview', requireAuth, async (req, res) => {
   const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
   if (!v) return res.status(404).send('Not found');
   const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
+  // Fetch VSL from library if variant has vsl_id
+  let vslData = null;
+  if (v.vsl_id) {
+    const { data: vsl } = await supabase.from('vsls').select('*').eq('id', v.vsl_id).single();
+    vslData = vsl || null;
+  }
   if (v.page_mode === 'custom' && v.custom_html) {
     const html = v.custom_html.replace('<body>', '<body><div style="position:fixed;top:0;left:0;right:0;background:#7c3aed;color:white;text-align:center;padding:8px;font-size:13px;z-index:99999">⚠️ PREVIEW MODE</div><div style="height:36px"></div>');
     res.send(html);
   } else if (v.page_mode === 'builder' && v.blocks?.length > 0) {
     res.send(renderPageFromBlocks(v.blocks, testimonials || [], true));
   } else {
-    res.send(renderLandingPage(v, testimonials || [], true));
+    res.send(renderLandingPage(v, testimonials || [], true, vslData));
   }
 });
 
@@ -376,8 +410,18 @@ router.post('/rotation', requireAuth, async (req, res) => {
 
 // ─── variant form HTML ───────────────────────────────────────────────────────
 
-function variantForm(v = {}) {
+function variantForm(v = {}, vsls = []) {
   const isEdit = !!v.id;
+
+  // Determine current VSL source
+  let currentVslSource = 'none';
+  if (v.vsl_id) currentVslSource = 'library';
+  else if (v.vsl_type === 'url' && v.vsl_url) currentVslSource = 'url';
+
+  const vslOptions = vsls.map(vsl =>
+    `<option value="${vsl.id}" ${String(v.vsl_id) === String(vsl.id) ? 'selected' : ''}>${vsl.name} (${vsl.type})</option>`
+  ).join('');
+
   return `
     <form method="POST" action="/admin/variants/${isEdit ? v.id + '/edit' : 'new'}">
       <div class="card" style="margin-bottom:20px">
@@ -415,16 +459,30 @@ function variantForm(v = {}) {
       <div class="card" style="margin-bottom:20px">
         <div class="card-title">VSL Video</div>
         <div class="form-group">
-          <label>Video Type</label>
-          <select name="vsl_type" id="vsl_type" onchange="toggleV(this.value)">
-            <option value="none" ${(v.vsl_type||'none')==='none'?'selected':''}>No video</option>
-            <option value="url" ${v.vsl_type==='url'?'selected':''}>YouTube / Vimeo embed URL</option>
-          </select>
-        </div>
-        <div id="vsl-url-section" style="${v.vsl_type==='url'?'':'display:none'}">
-          <div class="form-group">
-            <label>Embed URL</label>
-            <input type="text" name="vsl_url" value="${v.vsl_url || ''}" placeholder="https://www.youtube.com/embed/VIDEO_ID">
+          <label>Video Source</label>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:#0d0d14;border:1px solid #1e1e30;border-radius:8px">
+              <input type="radio" name="vsl_source" value="none" ${currentVslSource === 'none' ? 'checked' : ''} onchange="toggleVslSource('none')" style="width:auto;margin:0">
+              <span>None</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:#0d0d14;border:1px solid #1e1e30;border-radius:8px">
+              <input type="radio" name="vsl_source" value="library" ${currentVslSource === 'library' ? 'checked' : ''} onchange="toggleVslSource('library')" style="width:auto;margin:0">
+              <span>From library</span>
+            </label>
+            <div id="vsl-library-section" style="${currentVslSource === 'library' ? '' : 'display:none'};padding-left:32px">
+              <select name="vsl_id" style="margin-bottom:0">
+                <option value="">Select a VSL…</option>
+                ${vslOptions}
+              </select>
+              ${vsls.length === 0 ? '<div style="font-size:12px;color:#64748b;margin-top:6px">No VSLs yet — <a href="/admin/vsl" style="color:#a78bfa">add one to the library</a></div>' : ''}
+            </div>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:#0d0d14;border:1px solid #1e1e30;border-radius:8px">
+              <input type="radio" name="vsl_source" value="url" ${currentVslSource === 'url' ? 'checked' : ''} onchange="toggleVslSource('url')" style="width:auto;margin:0">
+              <span>URL (embed)</span>
+            </label>
+            <div id="vsl-url-section" style="${currentVslSource === 'url' ? '' : 'display:none'};padding-left:32px">
+              <input type="text" name="vsl_url" value="${v.vsl_url || ''}" placeholder="https://www.youtube.com/embed/VIDEO_ID" style="margin-bottom:0">
+            </div>
           </div>
         </div>
       </div>
@@ -435,13 +493,18 @@ function variantForm(v = {}) {
         ${isEdit ? `<form method="POST" action="/admin/variants/${v.id}/delete" style="margin-left:auto" onsubmit="return confirm('Delete this variant?')"><button class="btn btn-danger btn-sm">Delete</button></form>` : ''}
       </div>
     </form>
-    <script>function toggleV(v){document.getElementById('vsl-url-section').style.display=v==='url'?'':'none';}</script>
+    <script>
+    function toggleVslSource(src) {
+      document.getElementById('vsl-library-section').style.display = src === 'library' ? '' : 'none';
+      document.getElementById('vsl-url-section').style.display = src === 'url' ? '' : 'none';
+    }
+    </script>
   `;
 }
 
 // ─── landing page renderer ───────────────────────────────────────────────────
 
-function renderLandingPage(variant, testimonials, isPreview = false) {
+function renderLandingPage(variant, testimonials, isPreview = false, vslData = null) {
   const headline = variant.headline || 'Make Your First $1,000 With AI Creators';
   const subheadline = variant.subheadline || 'Join thousands building real income streams with AI creators + social media. Watch the free training and claim your spot.';
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
@@ -456,8 +519,20 @@ function renderLandingPage(variant, testimonials, isPreview = false) {
       <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
     </div>`).join('');
 
-  const vslHTML = variant.vsl_type === 'url' && variant.vsl_url
-    ? `<section class="vsl-section"><div class="container"><div class="vsl-wrap"><iframe src="${variant.vsl_url}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div></div></section>`
+  // Resolve VSL — vslData from library takes priority, then variant fields
+  let vslSrc = null;
+  let vslIsFile = false;
+  if (vslData) {
+    vslSrc = vslData.url || vslData.file_path || null;
+    vslIsFile = vslData.type === 'file';
+  } else if (variant.vsl_type === 'url' && variant.vsl_url) {
+    vslSrc = variant.vsl_url;
+    vslIsFile = false;
+  }
+  const vslHTML = vslSrc
+    ? vslIsFile
+      ? `<section class="vsl-section"><div class="container"><video src="${vslSrc}" controls style="width:100%;border-radius:16px;box-shadow:0 0 60px rgba(124,58,237,.2)"></video></div></section>`
+      : `<section class="vsl-section"><div class="container"><div class="vsl-wrap"><iframe src="${vslSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div></div></section>`
     : '';
 
   return `<!DOCTYPE html>

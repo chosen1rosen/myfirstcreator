@@ -31,6 +31,12 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
   const blockTypesJSON = JSON.stringify(BLOCK_TYPES);
   const blocksJSON = JSON.stringify(blocks);
 
+  // Load VSL library for the VSL block dropdown
+  const { data: vslLibrary } = await supabase.from('vsls').select('id, name, type').order('created_at', { ascending: false });
+  const vslLibraryJSON = JSON.stringify(vslLibrary || []);
+  // Current variant's vsl_id for pre-selection
+  const currentVslId = v.vsl_id || null;
+
   res.send(layout(`Page Builder — ${v.name}`, `
     <style>
       .builder-wrap { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 120px); margin: -32px; position: relative; }
@@ -85,6 +91,23 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
           <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Add a block</div>
           <div class="add-block-grid" id="block-type-buttons"></div>
         </div>
+
+        <!-- VSL Panel -->
+        <div style="margin-top:24px;border-top:1px solid #1e1e30;padding-top:20px">
+          <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🎬 VSL Video</div>
+          <div class="field">
+            <label>From library</label>
+            <select id="vsl-library-select">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Or paste embed URL</label>
+            <input type="text" id="vsl-url-input" placeholder="https://www.youtube.com/embed/...">
+          </div>
+          <button onclick="saveVslSettings()" style="width:100%;background:#1e1e35;border:1px solid #2d2d4a;color:#94a3b8;padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;transition:.15s" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#a78bfa'" onmouseout="this.style.borderColor='#2d2d4a';this.style.color='#94a3b8'">Save VSL</button>
+          <div id="vsl-save-status" style="font-size:11px;color:#64748b;margin-top:6px"></div>
+        </div>
       </div>
 
       <!-- RIGHT: live preview -->
@@ -132,6 +155,8 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
     const BLOCK_TYPES = ${blockTypesJSON};
     let blocks = ${blocksJSON};
     let dirty = false;
+    const VSL_LIBRARY = ${vslLibraryJSON};
+    const VARIANT_VSL_ID = ${JSON.stringify(currentVslId)};
 
     // ── Default block configs ────────────────────────────────────────────────
     const DEFAULTS = {
@@ -201,7 +226,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
 
       switch(b.type) {
         case 'hero': return f('headline','Headline') + ta('subheadline','Subheadline') + f('cta_text','CTA Button Text') + f('badge_text','Badge Pill Text (optional)') + ta('trust_items','Trust Items (one per line)',3) + f('bg_color','Background Color','text','placeholder="transparent or #hex or CSS gradient"') + f('padding','Vertical Padding','text','placeholder="64px"');
-        case 'vsl': return f('vsl_url','YouTube / Vimeo Embed URL') + f('vsl_file','Or direct video URL') + f('caption','Caption (optional)');
+        case 'vsl': return renderVslBlockForm(b, i);
         case 'email_capture': return f('title','Title') + f('subtitle','Subtitle') + f('cta_text','Button Text') + f('label','Section Label (optional)') + chk('show_name','Show name field') + f('name_placeholder','Name Placeholder','text') + f('email_placeholder','Email Placeholder','text') + f('bg_color','Background Color','text','placeholder="transparent"');
         case 'testimonials': return f('title','Section Title') + f('label','Section Label') + sel('layout','Layout',[{v:'grid',l:'Grid'},{v:'list',l:'List'}]) + f('limit','Max Testimonials to Show','number');
         case 'features': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + sel('columns','Columns',[{v:2,l:'2 Columns'},{v:3,l:'3 Columns'},{v:4,l:'4 Columns'}]) + renderFeatureItems(b, i);
@@ -224,6 +249,28 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
           <div class="field"><label>Description</label><input type="text" value="\${esc(item.description||'')}" onchange="updateFeatureItem(\${i},\${j},'description',this.value)"></div>
         </div>\`).join('');
       return \`<div style="margin-top:12px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Feature Items</div>\${rows}<button onclick="addFeatureItem(\${i})" class="btn btn-ghost btn-sm" style="margin-top:4px;width:100%">+ Add Feature</button></div>\`;
+    }
+
+    function renderVslBlockForm(b, i) {
+      const libOptions = VSL_LIBRARY.map(vsl =>
+        '<option value="' + vsl.id + '" ' + (String(b.vsl_library_id) === String(vsl.id) ? 'selected' : '') + '>' + vsl.name + ' (' + vsl.type + ')</option>'
+      ).join('');
+      const hasLib = VSL_LIBRARY.length > 0;
+      const onchangeLib = 'updateField(' + i + ',\'vsl_library_id\',this.value||null);if(this.value){updateField(' + i + ',\'vsl_url\',\'\');updateField(' + i + ',\'vsl_file\',' + "'');}";
+      const onchangeUrl = 'updateField(' + i + ',\'vsl_url\',this.value);if(this.value)updateField(' + i + ',\'vsl_library_id\',null);';
+      const onchangeFile = 'updateField(' + i + ',\'vsl_file\',this.value);';
+      const onchangeCap = 'updateField(' + i + ',\'caption\',this.value);';
+      return '<div class="field">'
+        + '<label>From Library</label>'
+        + '<select onchange="' + onchangeLib + '">'
+        + '<option value="">None (use URL below)</option>'
+        + (hasLib ? libOptions : '<option disabled>No VSLs in library yet</option>')
+        + '</select>'
+        + (hasLib ? '' : '<div style="font-size:11px;color:#475569;margin-top:4px"><a href="/admin/vsl" target="_blank" style="color:#a78bfa">Add VSLs to library &#8599;</a></div>')
+        + '</div>'
+        + '<div class="field"><label>Or paste embed URL</label><input type="text" value="' + esc(b.vsl_url||'') + '" onchange="' + onchangeUrl + '" placeholder="https://www.youtube.com/embed/..."></div>'
+        + '<div class="field"><label>Or direct video URL</label><input type="text" value="' + esc(b.vsl_file||'') + '" onchange="' + onchangeFile + '"></div>'
+        + '<div class="field"><label>Caption (optional)</label><input type="text" value="' + esc(b.caption||'') + '" onchange="' + onchangeCap + '"></div>';
     }
 
     function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
@@ -323,6 +370,43 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
+    // ── VSL Panel ────────────────────────────────────────────────────────────────
+    async function loadVslLibrary() {
+      const sel = document.getElementById('vsl-library-select');
+      // Use the injected VSL_LIBRARY data
+      sel.innerHTML = '<option value="">None</option>' + VSL_LIBRARY.map(v =>
+        '<option value="' + v.id + '" ' + (VARIANT_VSL_ID == v.id ? 'selected' : '') + '>' + v.name + ' (' + v.type + ')</option>'
+      ).join('');
+    }
+
+    async function saveVslSettings() {
+      const vslId = document.getElementById('vsl-library-select').value;
+      const vslUrl = document.getElementById('vsl-url-input').value.trim();
+      const statusEl = document.getElementById('vsl-save-status');
+      statusEl.textContent = 'Saving...';
+      try {
+        const payload = {};
+        if (vslId) {
+          payload.vsl_id = parseInt(vslId);
+          payload.vsl_source = 'library';
+        } else if (vslUrl) {
+          payload.vsl_url = vslUrl;
+          payload.vsl_source = 'url';
+        } else {
+          payload.vsl_source = 'none';
+        }
+        const res = await fetch('/admin/variants/${req.params.id}/vsl', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        statusEl.textContent = data.ok ? '\u2705 Saved' : ('\u274c Error: ' + (data.error || 'unknown'));
+      } catch(e) {
+        statusEl.textContent = '\u274c Error: ' + e.message;
+      }
+    }
+
     function init() {
       // Render block type buttons
       const grid = document.getElementById('block-type-buttons');
@@ -330,6 +414,11 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
       // Open first block by default if blocks exist
       if (blocks.length > 0) openBlocks.add(0);
       render();
+      // Load VSL library panel
+      loadVslLibrary();
+      // Pre-fill URL input if variant has a vsl_url
+      const variantVslUrl = ${JSON.stringify(v.vsl_url || '')};
+      if (variantVslUrl) document.getElementById('vsl-url-input').value = variantVslUrl;
     }
 
     // Warn before leaving with unsaved changes
@@ -431,6 +520,32 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
     init();
     </script>
   `, 'variants'));
+});
+
+// ─── Save VSL settings for variant (from builder panel) ─────────────────────
+
+router.post('/:id/vsl', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const v = await getVariantForAdmin(req.params.id, adminId);
+  if (!v) return res.status(403).json({ error: 'Access denied' });
+  const { vsl_source, vsl_id, vsl_url } = req.body;
+  const updateData = { updated_at: new Date().toISOString() };
+  if (vsl_source === 'library' && vsl_id) {
+    updateData.vsl_id = parseInt(vsl_id);
+    updateData.vsl_type = 'library';
+    updateData.vsl_url = null;
+  } else if (vsl_source === 'url' && vsl_url) {
+    updateData.vsl_id = null;
+    updateData.vsl_type = 'url';
+    updateData.vsl_url = vsl_url;
+  } else {
+    updateData.vsl_id = null;
+    updateData.vsl_type = 'none';
+    updateData.vsl_url = null;
+  }
+  const { error } = await supabase.from('variants').update(updateData).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 // ─── Save blocks ──────────────────────────────────────────────────────────────

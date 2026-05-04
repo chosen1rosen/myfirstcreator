@@ -110,7 +110,7 @@ router.get('/r/:slug', async (req, res) => {
   res.redirect(link.destination || '/');
 });
 
-// Get VSL settings
+// Get VSL settings (global — backward compat)
 router.get('/api/vsl', async (req, res) => {
   const [type, url, file] = await Promise.all([
     getSetting('vsl_type'),
@@ -118,6 +118,31 @@ router.get('/api/vsl', async (req, res) => {
     getSetting('vsl_file'),
   ]);
   res.json({ type, url, file: file || null });
+});
+
+// Get VSL for a specific variant (new per-variant system)
+router.get('/api/vsl/:variantId', async (req, res) => {
+  const variantId = parseInt(req.params.variantId);
+  if (!variantId) return res.status(400).json({ error: 'invalid variantId' });
+  const { data: variant } = await supabase.from('variants').select('vsl_id, vsl_type, vsl_url').eq('id', variantId).single();
+  if (!variant) return res.status(404).json({ error: 'variant not found' });
+
+  if (variant.vsl_id) {
+    const { data: vsl } = await supabase.from('vsls').select('*').eq('id', variant.vsl_id).single();
+    if (vsl) {
+      return res.json({ type: vsl.type, url: vsl.url || vsl.file_path });
+    }
+  }
+  if (variant.vsl_type === 'url' && variant.vsl_url) {
+    return res.json({ type: 'url', url: variant.vsl_url });
+  }
+  // Fallback to global settings
+  const [type, url, file] = await Promise.all([
+    getSetting('vsl_type'),
+    getSetting('vsl_url'),
+    getSetting('vsl_file'),
+  ]);
+  res.json({ type: type || 'none', url: url || file || null });
 });
 
 // Get active testimonials
@@ -299,12 +324,18 @@ router.get('/', async (req, res, next) => {
     res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
 
     const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
+    // Fetch VSL from library if variant has vsl_id
+    let vslData = null;
+    if (variant.vsl_id) {
+      const { data: vsl } = await supabase.from('vsls').select('*').eq('id', variant.vsl_id).single();
+      vslData = vsl || null;
+    }
     if (variant.page_mode === 'custom' && variant.custom_html) {
       res.send(variant.custom_html);
     } else if (variant.page_mode === 'builder' && variant.blocks?.length > 0) {
       res.send(renderPageFromBlocks(variant.blocks, testimonials || []));
     } else {
-      res.send(renderLandingPage(variant, testimonials || []));
+      res.send(renderLandingPage(variant, testimonials || [], false, vslData));
     }
   } catch (err) {
     console.error('Variant render error:', err);

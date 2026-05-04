@@ -30,6 +30,73 @@
       ]},
     };
 
+    // ── Builder media upload helpers ─────────────────────────────────────────
+    async function uploadBuilderMedia(file, onProgress, onComplete, onError) {
+      try {
+        const CHUNK_SIZE = 4 * 1024 * 1024;
+        const initRes = await fetch('/admin/media/tus-init', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ filename: file.name, mimetype: file.type || 'video/mp4', size: file.size })
+        });
+        const init = await initRes.json();
+        if (init.error) throw new Error(init.error);
+        let offset = 0;
+        while (offset < file.size) {
+          const chunk = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+          const buf = await chunk.arrayBuffer();
+          if (onProgress) onProgress(Math.round(offset / file.size * 100));
+          const patchRes = await fetch('/admin/media/tus-chunk', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/offset+octet-stream',
+              'x-upload-id': init.uploadId,
+              'x-upload-offset': String(offset),
+            },
+            body: buf,
+          });
+          if (!patchRes.ok) {
+            const d = await patchRes.json().catch(() => ({}));
+            throw new Error(d.error || 'Chunk failed');
+          }
+          const pd = await patchRes.json();
+          offset = pd.offset;
+        }
+        if (onProgress) onProgress(100);
+        if (onComplete) onComplete(init.publicUrl);
+      } catch(e) {
+        if (onError) onError(e.message);
+      }
+    }
+
+    function triggerMediaUpload(blockType, blockIdx, itemIdx, fieldKey, labelId) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*,image/*';
+      input.onchange = function() {
+        var file = input.files[0];
+        if (!file) return;
+        var label = document.getElementById(labelId);
+        if (label) label.textContent = 'Uploading 0%...';
+        uploadBuilderMedia(
+          file,
+          function(pct) { if (label) label.textContent = 'Uploading ' + pct + '%...'; },
+          function(url) {
+            if (label) label.textContent = '\u2705 Uploaded';
+            if (blockType === 'how_it_works') {
+              updateHowItWorksStep(blockIdx, itemIdx, fieldKey, url);
+            } else if (blockType === 'creator_scroll') {
+              updateCreatorItem(blockIdx, itemIdx, fieldKey, url);
+            }
+            render();
+            debouncePreview();
+          },
+          function(err) { if (label) label.textContent = '\u274c ' + err; }
+        );
+      };
+      input.click();
+    }
+
     // ── Render block list ────────────────────────────────────────────────────
     function render() {
       const list = document.getElementById('block-list');
@@ -247,8 +314,20 @@
           + '<option value="image"' + (!isVideo ? ' selected' : '') + '>Photo</option>'
           + '<option value="video"' + (isVideo ? ' selected' : '') + '>Video</option>'
           + '</select></div>'
-          + (!isVideo ? '<div class="field"><label>Background Image URL (optional)</label><input type="text" value="' + esc(step.image||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>' : '')
-          + (isVideo ? '<div class="field"><label>Video URL</label><input type="text" value="' + esc(step.video||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://..."></div>' : '')
+          + (!isVideo ? '<div class="field"><label>Background Image URL (optional)</label>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+          + '<input type="text" value="' + esc(step.image||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://... or upload \u2192" style="flex:1">'
+          + '<button onclick="triggerMediaUpload(\'how_it_works\',' + i + ',' + j + ',\'image\',\'hiw_img_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#a78bfa;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>'
+          + '</div>'
+          + '<div id="hiw_img_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div>'
+          + '</div>' : '')
+          + (isVideo ? '<div class="field"><label>Video URL</label>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+          + '<input type="text" value="' + esc(step.video||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://... or upload \u2192" style="flex:1">'
+          + '<button onclick="triggerMediaUpload(\'how_it_works\',' + i + ',' + j + ',\'video\',\'hiw_upload_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#a78bfa;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>'
+          + '</div>'
+          + '<div id="hiw_upload_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div>'
+          + '</div>' : '')
           + '<div class="field"><label>Arrow Button Color</label><input type="text" value="' + esc(step.color||'#ff3366') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'color\',this.value)" placeholder="#ff3366"></div>'
           + '</div>';
       }).join('');
@@ -285,8 +364,20 @@
           + '<option value="image"' + (!isVideo ? ' selected' : '') + '>Photo</option>'
           + '<option value="video"' + (isVideo ? ' selected' : '') + '>Video</option>'
           + '</select></div>'
-          + (!isVideo ? '<div class="field"><label>Photo URL</label><input type="text" value="' + esc(item.image||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>' : '')
-          + (isVideo ? '<div class="field"><label>Video URL</label><input type="text" value="' + esc(item.video||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://..."></div>' : '')
+          + (!isVideo ? '<div class="field"><label>Photo URL</label>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+          + '<input type="text" value="' + esc(item.image||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://... or upload \u2192" style="flex:1">'
+          + '<button onclick="triggerMediaUpload(\'creator_scroll\',' + i + ',' + j + ',\'image\',\'cs_img_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#a78bfa;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>'
+          + '</div>'
+          + '<div id="cs_img_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div>'
+          + '</div>' : '')
+          + (isVideo ? '<div class="field"><label>Video URL</label>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+          + '<input type="text" value="' + esc(item.video||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://... or upload \u2192" style="flex:1">'
+          + '<button onclick="triggerMediaUpload(\'creator_scroll\',' + i + ',' + j + ',\'video\',\'cs_upload_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#a78bfa;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">\uD83D\uDCE4 Upload</button>'
+          + '</div>'
+          + '<div id="cs_upload_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div>'
+          + '</div>' : '')
           + '<div class="field"><label>Engagement Count (e.g. 2.1M)</label><input type="text" value="' + esc(item.engagement||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'engagement\',this.value)" placeholder="2.1M"></div>'
           + '<div class="field"><label>Engagement Type</label><select onchange="updateCreatorItem(' + i + ',' + j + ',\'engagement_type\',this.value)">'
           + '<option value="likes"' + (item.engagement_type!=='views' ? ' selected' : '') + '>❤️ Likes</option>'

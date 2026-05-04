@@ -287,6 +287,74 @@ router.patch('/vsl/tus-chunk', requireAuth, express.raw({ type: '*/*', limit: '5
   }
 });
 
+// Generic media upload — TUS init (for builder block media)
+router.post('/media/tus-init', requireAuth, async (req, res) => {
+  try {
+    const { filename, mimetype, size } = req.body;
+    const ext = (filename || 'video.mp4').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'') || 'mp4';
+    const path = `media/media-${Date.now()}.${ext}`;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const bucketName = 'mfc-assets';
+    const b64 = s => Buffer.from(s).toString('base64');
+    const metadata = [
+      `bucketName ${b64(bucketName)}`,
+      `objectName ${b64(path)}`,
+      `contentType ${b64(mimetype || 'video/mp4')}`,
+    ].join(',');
+    const resp = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'x-upsert': 'true',
+        'Upload-Length': String(size),
+        'Tus-Resumable': '1.0.0',
+        'Upload-Metadata': metadata,
+      }
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(500).json({ error: `TUS init failed: ${errText}` });
+    }
+    const location = resp.headers.get('Location') || '';
+    const uploadId = location.split('/').filter(Boolean).pop();
+    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+    res.json({ uploadId, path, publicUrl: urlData.publicUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Generic media upload — TUS chunk proxy
+router.patch('/media/tus-chunk', requireAuth, express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
+  const uploadId = req.headers['x-upload-id'];
+  const offset = req.headers['x-upload-offset'];
+  if (!uploadId || offset === undefined) return res.status(400).json({ error: 'Missing upload-id or offset' });
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  try {
+    const resp = await fetch(`${supabaseUrl}/storage/v1/upload/resumable/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/offset+octet-stream',
+        'Content-Length': String(req.body.length),
+        'Upload-Offset': offset,
+        'Tus-Resumable': '1.0.0',
+      },
+      body: req.body,
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(500).json({ error: errText });
+    }
+    const newOffset = resp.headers.get('upload-offset');
+    res.json({ offset: parseInt(newOffset || '0') });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // VSL: confirm upload — INSERT into vsls table (new library system)
 router.post('/vsl/confirm', requireAuth, async (req, res) => {
   const { vsl_type, vsl_url, publicUrl, name } = req.body;

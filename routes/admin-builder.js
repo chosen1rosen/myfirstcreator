@@ -39,7 +39,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
 
   res.send(layout(`Page Builder — ${v.name}`, `
     <style>
-      .builder-wrap { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: calc(100vh - 120px); margin: -32px; position: relative; }
+      .builder-wrap { display: grid; grid-template-columns: 380px 1fr; gap: 0; height: 100vh; margin: -32px -32px -32px calc(-220px - 32px); position: relative; }
       .builder-left { background: #0d0d14; border-right: 1px solid #1e1e30; overflow-y: auto; padding: 24px; }
       .builder-right { background: #090910; overflow: hidden; position: relative; }
       .builder-right iframe { width: 100%; height: 100%; border: none; }

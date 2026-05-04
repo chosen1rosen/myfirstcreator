@@ -579,9 +579,9 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .testimonials-section{padding:72px 20px;background:rgba(124,58,237,.03)}
     .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px}
     .carousel-viewport{overflow:hidden}
-    .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease}
-    .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center;min-height:180px}
-    .testimonial-card.tg-card{min-height:320px;padding:12px}
+    .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start}
+    .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonial-card.tg-card{padding:8px;background:transparent;border:none}
     @media(max-width:768px){.testimonial-card{flex:0 0 100%}.testimonials-carousel-wrap{padding:0 32px}}
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
     .car-prev{left:0}.car-next{right:0}

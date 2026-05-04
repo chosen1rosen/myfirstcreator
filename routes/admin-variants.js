@@ -619,8 +619,9 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .carousel-viewport{overflow:hidden}
     .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start}
     .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
-    .testimonial-card.tg-card{padding:8px;background:transparent;border:none;min-height:280px;display:flex;align-items:center;justify-content:center;position:relative}
-    .testimonial-card.tg-card::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#12121f 25%,#1a1a2e 50%,#12121f 75%);background-size:200% 100%;animation:tg-shimmer 1.5s infinite;border-radius:12px;opacity:1;transition:opacity 0.3s}
+    .testimonial-card.tg-card{padding:8px;background:transparent;border:none;min-height:280px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+    .testimonial-card.tg-card iframe,.testimonial-card.tg-card>div{max-width:100%!important;width:100%!important;box-sizing:border-box}
+    .testimonial-card.tg-card::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#12121f 25%,#1a1a2e 50%,#12121f 75%);background-size:200% 100%;animation:tg-shimmer 1.5s infinite;border-radius:12px;opacity:1;transition:opacity 0.3s;z-index:1}
     .testimonial-card.tg-card.tg-loaded::before{opacity:0;pointer-events:none}
     @keyframes tg-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
     @media(max-width:768px){.testimonial-card{flex:0 0 100vw}.testimonials-carousel-wrap{padding:0;width:100vw;position:relative;left:50%;transform:translateX(-50%);margin-top:0}.car-btn{display:none}.carousel-track{gap:0}} @media(max-width:480px) and (orientation:portrait){.testimonial-card.tg-card{zoom:0.75;width:133.33vw;max-width:133.33vw}}

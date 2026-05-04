@@ -90,7 +90,7 @@ function renderTestimonials(b, testimonialData) {
   const makeCard = t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-      return `<div class="testimonial-card tg-card"><div style="pointer-events:none;max-height:480px;overflow:hidden"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div></div>`;
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
@@ -131,7 +131,7 @@ function renderTestimonials(b, testimonialData) {
     var timer;
     function cardWidth() { return allCards[0] ? allCards[0].offsetWidth + 20 : 0; }
     function goTo(idx, animate) {
-      track.style.transition = animate === false ? 'none' : 'transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94)';
+      track.style.transition = animate === false ? 'none' : 'transform 0.5s ease';
       track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
     }
     track.addEventListener('transitionend', function() {
@@ -275,9 +275,9 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
-    .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid rgba(255,255,255,0.07);border-radius:24px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
-    .testimonial-card.tg-card{padding:0;background:transparent;border:none;box-shadow:none;overflow:hidden;border-radius:20px}
-    @media(max-width:768px){.testimonial-card{flex:0 0 85%}.testimonial-card.tg-card{max-height:480px;height:480px;overflow:hidden}}
+    .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonial-card.tg-card{padding:0;background:transparent;border:none;height:360px;overflow:hidden}
+    @media(max-width:768px){.testimonial-card{flex:0 0 92%}.testimonial-card.tg-card{height:360px}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

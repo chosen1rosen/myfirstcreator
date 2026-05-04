@@ -532,7 +532,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const testimonialCards = testimonials.map(t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-      return `<div class="testimonial-card tg-card"><div style="pointer-events:none;max-height:480px;overflow:hidden"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div></div>`;
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
@@ -593,13 +593,13 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600;margin-bottom:12px}
     .testimonials-section{padding:72px 20px;background:rgba(124,58,237,.03)}
-    .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px;margin:0 -8px}
+    .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px}
     .carousel-viewport{overflow:hidden}
-    .carousel-track{display:flex;gap:12px;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);align-items:flex-start}
-    .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid rgba(255,255,255,0.07);border-radius:24px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
-    .testimonial-card.tg-card{padding:0;background:transparent;border:none;box-shadow:none;overflow:hidden;border-radius:20px}
-    @media(max-width:768px){.testimonial-card{flex:0 0 85%}.testimonial-card.tg-card{max-height:480px;height:480px;overflow:hidden}.testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
-    .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1;backdrop-filter:blur(4px)}
+    .carousel-track{display:flex;gap:16px;transition:transform 0.5s ease;align-items:flex-start}
+    .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonial-card.tg-card{padding:0;background:transparent;border:none;height:360px;overflow:hidden}
+    @media(max-width:768px){.testimonial-card{flex:0 0 92%}.testimonial-card.tg-card{height:360px}.testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
+    .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
     .car-prev{left:0}.car-next{right:0}
     .section-header{text-align:center;margin-bottom:8px}
     .section-header h2{font-size:clamp(24px,4vw,36px);font-weight:700}
@@ -661,7 +661,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     }
     function goTo(idx, animate) {
       if (animate === false) track.style.transition = 'none';
-      else track.style.transition = 'transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94)';
+      else track.style.transition = 'transform 0.5s ease';
       track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
     }
     track.addEventListener('transitionend', function() {

@@ -293,9 +293,9 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .tg-mobile-preview{display:none}
     .tg-desktop-embed{display:block}
     @media(max-width:768px){
-      .testimonial-card.tg-card{background:#12121f;border:1px solid #1e1e30;padding:16px;min-height:160px;display:flex;flex-direction:column}
-      .tg-mobile-preview{display:flex;flex-direction:column;width:100%;height:100%}
-      .tg-desktop-embed{display:none}
+      .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden}
+      .tg-mobile-preview{display:none}
+      .tg-desktop-embed{display:block;zoom:0.58;border-radius:20px;overflow:hidden}
     }
     @media(max-width:768px){.testimonial-card{flex:0 0 88%}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}

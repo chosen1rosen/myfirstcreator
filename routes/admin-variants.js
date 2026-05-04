@@ -615,9 +615,9 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .tg-desktop-embed{display:block}
     @media(max-width:768px){
       .testimonial-card{flex:0 0 calc(47% - 6px)}
-      .testimonial-card.tg-card{min-height:160px;padding:16px;display:flex;flex-direction:column;background:#12121f;border:1px solid #1e1e30}
-      .tg-mobile-preview{display:flex;flex-direction:column;width:100%;height:100%}
-      .tg-desktop-embed{display:none}
+      .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden}
+      .tg-mobile-preview{display:none}
+      .tg-desktop-embed{display:block;zoom:0.58;border-radius:20px;overflow:hidden}
     .testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
     .car-prev{left:0}.car-next{right:0}

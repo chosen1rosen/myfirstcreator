@@ -10,8 +10,6 @@ const BLOCK_TYPES = [
   { type: 'cta_banner',    label: '🚀 CTA Banner' },
   { type: 'calendar_add',  label: '📅 Add to Calendar' },
   { type: 'html',          label: '💻 Custom HTML' },
-  { type: 'how_it_works',  label: '📋 How It Works' },
-  { type: 'creator_scroll', label: '🎬 Creator Scroll' },
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
 
@@ -28,8 +26,6 @@ function renderBlock(block, testimonialData = []) {
     case 'cta_banner': return renderCTABanner(block);
     case 'calendar_add': return renderCalendarAdd(block);
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
-    case 'how_it_works': return renderHowItWorks(block);
-    case 'creator_scroll': return renderCreatorScroll(block);
     default: return ''
   }
 }
@@ -43,16 +39,17 @@ function renderHero(b) {
       ${b.badge_text ? `<div class="badge-pill">${b.badge_text}</div><br>` : ''}
       <h1 class="hero-headline">${b.headline || 'Your Headline Here'}</h1>
       ${b.subheadline ? `<p class="hero-sub">${b.subheadline}</p>` : ''}
-      ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" class="btn-hero" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}
+      ${b.cta_text ? `<a href="#signup" class="btn-hero">${b.cta_text}</a>` : ''}
       ${trust.length ? `<div class="trust-row">${trust.map(t=>`<span>${t}</span>`).join('')}</div>` : ''}
     </div>
   </section>`;
 }
 
 function renderVSL(b) {
-  if (!b.vsl_file && !b.vsl_url) return '';
-  const src = b.vsl_file || b.vsl_url;
-  const content = `<video src="${src}" controls style="width:100%;border-radius:16px;box-shadow:0 0 40px rgba(124,58,237,.2)"></video>`;
+  if (!b.vsl_url && !b.vsl_file) return '';
+  const content = b.vsl_url
+    ? `<div class="vsl-wrap"><iframe src="${b.vsl_url}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
+    : `<video src="${b.vsl_file}" controls style="width:100%;border-radius:16px"></video>`;
   return `
   <section class="block-vsl" style="padding:48px 20px;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
     <div class="container">
@@ -64,21 +61,18 @@ function renderVSL(b) {
 
 function renderEmailCapture(b) {
   const bg = b.bg_color || 'transparent';
-  const isLink = b.cta_destination === 'link' && b.cta_link;
   return `
   <section class="block-email" id="signup" style="padding:72px 20px;background:${bg};text-align:center">
     <div class="signup-box">
       ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
       ${b.title ? `<h2>${b.title}</h2>` : ''}
       ${b.subtitle ? `<p style="color:#64748b;margin:8px 0 24px;font-size:15px">${b.subtitle}</p>` : ''}
-      ${isLink
-        ? `<a href="${b.cta_link}" target="_blank" class="btn-submit" style="display:block;text-decoration:none;text-align:center">${b.cta_text||'Get Instant Access →'}</a>`
-        : `<form id="signup-form">
+      <form id="signup-form">
         ${b.show_name !== false ? `<input type="text" id="sig-name" placeholder="${b.name_placeholder||'Your first name'}">` : ''}
         <input type="email" id="sig-email" placeholder="${b.email_placeholder||'Your email address'}" required>
         <button type="submit" class="btn-submit">${b.cta_text||'Get Instant Access →'}</button>
         <div class="success-msg" id="success-msg"></div>
-      </form>`}
+      </form>
     </div>
   </section>`;
 }
@@ -90,14 +84,14 @@ function renderTestimonials(b, testimonialData) {
   const makeCard = t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
       <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
       <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle||''}</div>
       ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
-      <div style="font-size:13px;color:#94a3b8;line-height:1.5">${t.quote ? `"${t.quote}"` : ""}</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
     </div>`;
   };
   const cardList = items.map(makeCard);
@@ -112,11 +106,11 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
         ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700">${b.title}</h2>` : ''}
       </div>
       <div class="testimonials-carousel-wrap" id="wrap-${blockId}" style="position:relative;overflow:hidden;padding:0 40px">
-        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8249;</button>
+        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8249;</button>
         <div style="overflow:hidden">
-          <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:12px;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);align-items:flex-start">${carouselCards}</div>
+          <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start">${carouselCards}</div>
         </div>
-        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8250;</button>
+        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8250;</button>
       </div>
     </div>
   </section>
@@ -178,7 +172,7 @@ function renderImageText(b) {
     ${b.label ? `<div class="section-label" style="margin-bottom:12px">${b.label}</div>` : ''}
     ${b.title ? `<h2 style="font-size:clamp(22px,3.5vw,36px);font-weight:700;margin-bottom:16px">${b.title}</h2>` : ''}
     ${b.body ? `<p style="color:#94a3b8;font-size:16px;line-height:1.7;margin-bottom:24px">${b.body}</p>` : ''}
-    ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" class="btn-hero" style="font-size:16px;padding:14px 28px" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}`;
+    ${b.cta_text ? `<a href="#signup" class="btn-hero" style="font-size:16px;padding:14px 28px">${b.cta_text}</a>` : ''}`;
   return `
   <section class="block-image-text" style="padding:72px 20px">
     <div class="container">
@@ -237,7 +231,7 @@ function renderCTABanner(b) {
     <div class="container">
       ${b.headline ? `<h2 style="font-size:clamp(28px,5vw,48px);font-weight:800;color:${b.text_color||'white'};margin-bottom:24px">${b.headline}</h2>` : ''}
       ${b.subheadline ? `<p style="color:${b.text_color||'rgba(255,255,255,0.8)'};font-size:18px;margin-bottom:32px">${b.subheadline}</p>` : ''}
-      ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" style="display:inline-block;padding:18px 48px;background:white;color:#7c3aed;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}
+      ${b.cta_text ? `<a href="#signup" style="display:inline-block;padding:18px 48px;background:white;color:#7c3aed;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none">${b.cta_text}</a>` : ''}
     </div>
   </section>`;
 }
@@ -275,10 +269,9 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
-    .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonial-card{flex:0 0 calc(33.333% - 14px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
     .testimonial-card.tg-card{padding:8px;background:transparent;border:none}
     @media(max-width:768px){.testimonial-card{flex:0 0 100%}}
-    @media(max-width:768px){.testimonial-card{flex:0 0 88%}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){
@@ -314,83 +307,6 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
   </script>
 </body>
 </html>`;
-}
-
-function renderHowItWorks(b) {
-  const title = b.title || 'HOW IT WORKS';
-  const steps = b.steps || [];
-
-  const cards = steps.map((step, idx) => {
-    let mediaBg = '';
-    if (step.media_type === 'video' && step.video) {
-      mediaBg = `<video src="${step.video}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.85"></video>`;
-    } else if (step.image) {
-      mediaBg = `<img src="${step.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.85" alt="">`;
-    }
-    const cardBg = (step.image || (step.media_type === 'video' && step.video)) ? '' : 'background:linear-gradient(135deg,#1a1a2e,#0d0d14);';
-    const btnColor = step.color || '#ff3366';
-    return `
-    <div style="position:relative;border-radius:20px;overflow:hidden;min-height:380px;${cardBg}">
-      ${mediaBg}
-      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.3) 50%,transparent 100%)"></div>
-      <div style="position:absolute;bottom:0;left:0;right:0;padding:24px">
-        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:900;color:white;text-transform:uppercase;line-height:1.1;margin-bottom:8px;padding-right:52px">${step.title || 'Step ' + (idx+1)}</div>
-        ${step.description ? `<p style="font-size:13px;color:rgba(255,255,255,0.7);line-height:1.5;margin:0;padding-right:52px">${step.description}</p>` : ''}
-      </div>
-      <div style="position:absolute;bottom:24px;right:24px;width:42px;height:42px;border-radius:50%;background:${btnColor};display:flex;align-items:center;justify-content:center;font-size:18px;color:white;font-weight:700">→</div>
-    </div>`;
-  }).join('');
-
-  return `
-  <section style="padding:80px 20px;background:#080810">
-    <div style="max-width:1200px;margin:0 auto">
-      <h2 style="text-align:center;font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:white;margin-bottom:48px">${title}</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
-        ${cards}
-      </div>
-    </div>
-  </section>`;
-}
-
-function renderCreatorScroll(b) {
-  const title = b.title || '';
-  const subtitle = b.subtitle || '';
-  const items = b.items || [];
-
-  const cards = items.map(item => {
-    const engagement = item.engagement || '';
-    const icon = item.engagement_type === 'views' ? '▶' : '♥';
-    const iconColor = item.engagement_type === 'views' ? '#fff' : '#ff3366';
-
-    let media = '';
-    if (item.media_type === 'video' && item.video) {
-      media = `<video src="${item.video}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;
-    } else if (item.image) {
-      media = `<img src="${item.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" alt="">`;
-    }
-
-    return `
-    <div style="flex:0 0 200px;position:relative;border-radius:16px;overflow:hidden;aspect-ratio:9/16;background:#111;snap-align:start">
-      ${media}
-      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 40%)"></div>
-      ${engagement ? `
-      <div style="position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:5px">
-        <span style="color:${iconColor};font-size:14px">${icon}</span>
-        <span style="color:white;font-size:13px;font-weight:700">${engagement}</span>
-      </div>` : ''}
-    </div>`;
-  }).join('');
-
-  return `
-  <section style="padding:60px 0;background:#080810;overflow:hidden">
-    ${title || subtitle ? `<div style="padding:0 20px;margin-bottom:32px;text-align:center">
-      ${title ? `<h2 style="font-size:clamp(24px,4vw,40px);font-weight:900;color:white;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${title}</h2>` : ''}
-      ${subtitle ? `<p style="color:rgba(255,255,255,0.6);font-size:16px">${subtitle}</p>` : ''}
-    </div>` : ''}
-    <div style="display:flex;gap:16px;overflow-x:auto;padding:0 20px 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none">
-      ${cards}
-    </div>
-  </section>`;
 }
 
 module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES };

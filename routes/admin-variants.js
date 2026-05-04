@@ -176,7 +176,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
 // Create variant
 router.post('/new', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items, cta_destination, cta_link } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
   // Determine VSL fields based on picker selection
   let resolvedVslType = 'none';
   let resolvedVslUrl = null;
@@ -189,7 +189,7 @@ router.post('/new', requireAuth, async (req, res) => {
     resolvedVslUrl = vsl_url;
   }
   const { data } = await supabase.from('variants').insert({
-    name, headline, subheadline, cta_text, badge_text, cta_destination: cta_destination||'signup', cta_link: cta_link||null,
+    name, headline, subheadline, cta_text, badge_text,
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     owner: adminId,
@@ -212,7 +212,7 @@ router.post('/new', requireAuth, async (req, res) => {
 
 // Update variant
 router.post('/:id/edit', requireAuth, async (req, res) => {
-  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items, cta_destination, cta_link } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
   // Determine VSL fields based on picker selection
   let resolvedVslType = 'none';
   let resolvedVslUrl = null;
@@ -225,7 +225,7 @@ router.post('/:id/edit', requireAuth, async (req, res) => {
     resolvedVslUrl = vsl_url;
   }
   await supabase.from('variants').update({
-    name, headline, subheadline, cta_text, badge_text, cta_destination: cta_destination||'signup', cta_link: cta_link||null,
+    name, headline, subheadline, cta_text, badge_text,
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     updated_at: new Date().toISOString()
@@ -451,20 +451,6 @@ function variantForm(v = {}, vsls = []) {
           <input type="text" name="cta_text" value="${v.cta_text || ''}" placeholder="Claim Your Free Spot →">
         </div>
         <div class="form-group">
-          <label>CTA Button Destination</label>
-          <div style="display:flex;gap:20px;margin-bottom:8px">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;font-size:13px">
-              <input type="radio" name="cta_destination" value="signup" ${(!v.cta_destination || v.cta_destination==='signup') ? 'checked' : ''} onchange="document.getElementById('cta_link_wrap').style.display='none'" style="width:auto;margin:0"> Email signup form
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;font-size:13px">
-              <input type="radio" name="cta_destination" value="link" ${v.cta_destination==='link' ? 'checked' : ''} onchange="document.getElementById('cta_link_wrap').style.display=''" style="width:auto;margin:0"> Direct link
-            </label>
-          </div>
-          <div id="cta_link_wrap" style="${v.cta_destination==='link' ? '' : 'display:none'}">
-            <input type="text" name="cta_link" value="${v.cta_link || ''}" placeholder="https://addcal.co/your-webinar">
-          </div>
-        </div>
-        <div class="form-group">
           <label>Trust Items (one per line, shown below CTA)</label>
           <textarea name="trust_items" rows="4" placeholder="✅ 100% Free&#10;🔒 No Credit Card&#10;⚡ Instant Access">${v.trust_items || ''}</textarea>
         </div>
@@ -522,8 +508,6 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const headline = variant.headline || 'Make Your First $1,000 With AI Creators';
   const subheadline = variant.subheadline || 'Join thousands building real income streams with AI creators + social media. Watch the free training and claim your spot.';
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
-  const ctaHref = variant.cta_destination === 'link' && variant.cta_link ? variant.cta_link : '#signup';
-  const ctaTarget = variant.cta_destination === 'link' && variant.cta_link ? ' target="_blank"' : '';
   const trustItems = (variant.trust_items || '✅ 100% Free\n🔒 No Credit Card\n⚡ Instant Access').split('\n').filter(Boolean);
 
   const perView = Math.min(testimonials.length, 3) || 1;
@@ -532,14 +516,14 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const testimonialCards = testimonials.map(t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
       <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
       <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle || ''}</div>
       ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
-      ${t.quote ? `<div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>` : ""}
+      <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
     </div>`;
   });
   const testimonialHTML = testimonialCards.join('');
@@ -595,11 +579,10 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
     .testimonials-section{padding:72px 20px;background:rgba(124,58,237,.03)}
     .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px}
     .carousel-viewport{overflow:hidden}
-    .carousel-track{display:flex;gap:16px;transition:transform 0.5s ease;align-items:flex-start}
+    .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start}
     .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
     .testimonial-card.tg-card{padding:8px;background:transparent;border:none}
-    @media(max-width:768px){.testimonial-card{flex:0 0 100%}.testimonials-carousel-wrap{padding:0 16px}
-    .testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
+    @media(max-width:768px){.testimonial-card{flex:0 0 100%}.testimonials-carousel-wrap{padding:0 32px}}
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
     .car-prev{left:0}.car-next{right:0}
     .section-header{text-align:center;margin-bottom:8px}
@@ -614,7 +597,7 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
       ${variant.badge_text ? `<div class="badge-pill">${variant.badge_text}</div><br>` : ''}
       <h1 class="hero-headline">${headline}</h1>
       <p class="hero-sub">${subheadline}</p>
-      <a href="${ctaHref}" class="btn-hero"${ctaTarget}>${ctaText}</a>
+      <a href="#signup" class="btn-hero">${ctaText}</a>
       <div class="trust-row">${trustItems.map(t => `<span>${t}</span>`).join('')}</div>
     </div>
   </section>
@@ -682,7 +665,7 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
   <section class="final-cta">
     <div class="container">
       <h2 style="font-size:clamp(28px,5vw,48px);font-weight:800;margin-bottom:20px">${headline}</h2>
-      <a href="${ctaHref}" class="btn-hero"${ctaTarget}>${ctaText}</a>
+      <a href="#signup" class="btn-hero">${ctaText}</a>
     </div>
   </section>
 

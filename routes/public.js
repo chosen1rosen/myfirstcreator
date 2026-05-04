@@ -323,7 +323,7 @@ router.get('/', async (req, res, next) => {
     await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: req.headers['user-agent'] || '', variant_id: variantId });
     res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
 
-    const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
+    const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(50);
     // Fetch VSL from library if variant has vsl_id
     let vslData = null;
     if (variant.vsl_id) {

@@ -258,7 +258,7 @@ router.post('/:id/delete', requireAuth, async (req, res) => {
 router.get('/:id/preview', requireAuth, async (req, res) => {
   const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
   if (!v) return res.status(404).send('Not found');
-  const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);
+  const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(50);
   // Fetch VSL from library if variant has vsl_id
   let vslData = null;
   if (v.vsl_id) {
@@ -510,6 +510,9 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
   const trustItems = (variant.trust_items || '✅ 100% Free\n🔒 No Credit Card\n⚡ Instant Access').split('\n').filter(Boolean);
 
+  const perView = Math.min(testimonials.length, 3) || 1;
+  const cardWidthCalc = perView === 1 ? '100%' : perView === 2 ? 'calc(50% - 10px)' : 'calc(33.333% - 14px)';
+
   const testimonialCards = testimonials.map(t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
@@ -577,7 +580,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px}
     .carousel-viewport{overflow:hidden}
     .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease}
-    .testimonial-card{flex:0 0 calc(33.333% - 14px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center;min-height:180px}
+    .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center;min-height:180px}
     .testimonial-card.tg-card{min-height:320px;padding:12px}
     @media(max-width:768px){.testimonial-card{flex:0 0 100%}.testimonials-carousel-wrap{padding:0 32px}}
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}

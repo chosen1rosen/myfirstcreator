@@ -626,13 +626,12 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     @keyframes tg-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
     @media(max-width:768px){
       .testimonials-section{padding:40px 0}
-      .testimonials-section .container{padding:0;max-width:100%;overflow:hidden}
-      .testimonials-carousel-wrap{padding:0;width:100vw;position:relative;left:50%;transform:translateX(-50%);margin-top:16px}
-      .carousel-viewport{width:100vw;overflow-x:hidden}
+      .testimonials-section .container{padding:0!important;max-width:100%!important}
+      .testimonials-carousel-wrap{padding:0;width:100%;overflow:hidden;margin-top:16px}
+      .carousel-viewport{width:100%;overflow:hidden}
       .carousel-track{gap:0}
-      .testimonial-card{flex:0 0 100vw;width:100vw;max-width:100vw;border-radius:0;padding:12px 0}
-      .testimonial-card.tg-card{padding:0;min-height:200px}
-      .testimonial-card.tg-card iframe,.testimonial-card.tg-card>div{width:100vw!important;max-width:100vw!important}
+      .testimonial-card{flex:0 0 100vw;width:100vw;max-width:100vw;border-radius:0;padding:0}
+      .testimonial-card.tg-card{min-height:200px}
       .car-btn{display:none}
     }
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
@@ -693,9 +692,10 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     var current = 0;
     var timer;
     function cardWidth() {
+      if (window.innerWidth <= 768) return window.innerWidth;
       if (!cards[0]) return 0;
-      var gap = parseFloat(window.getComputedStyle(track).gap) || 0;
-      return cards[0].offsetWidth + gap;
+      var gap = parseFloat(window.getComputedStyle(track).gap) || 20;
+      return cards[0].getBoundingClientRect().width + gap;
     }
     function goTo(idx, animate) {
       if (animate === false) track.style.transition = 'none';
@@ -731,6 +731,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     wrap.addEventListener('mouseenter', stopTimer);
     wrap.addEventListener('mouseleave', startTimer);
     window.carMove = function(dir) { stopTimer(); current += dir; goTo(current, true); startTimer(); };
+    window.addEventListener('resize', function() { clearInterval(timer); goTo(current, false); startTimer(); });
     requestAnimationFrame(initCarousel);
   })();
   <\/script>` : ''}

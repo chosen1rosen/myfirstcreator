@@ -39,7 +39,13 @@ async function getActiveVariant() {
   let clickCount = parseInt(clickCountRaw || '0');
   let startedAt = startedAtRaw ? new Date(startedAtRaw) : new Date();
 
-  if (!activeId || sequence.length === 0) return null;
+  if (!activeId) return null;
+
+  // In manual mode or with no sequence configured, just serve the active variant directly
+  if (mode === 'manual' || sequence.length === 0) {
+    await setSetting('rot_click_count', String(clickCount + 1));
+    return activeId;
+  }
 
   // Check if we need to rotate
   let shouldRotate = false;

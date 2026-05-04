@@ -32,7 +32,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
   const blocksJSON = JSON.stringify(blocks);
 
   // Load VSL library for the VSL block dropdown
-  const { data: vslLibrary } = await supabase.from('vsls').select('id, name, type').order('created_at', { ascending: false });
+  const { data: vslLibrary } = await supabase.from('vsls').select('id, name, type, url, file_path').order('created_at', { ascending: false });
   const vslLibraryJSON = JSON.stringify(vslLibrary || []);
   // Current variant's vsl_id for pre-selection
   const currentVslId = v.vsl_id || null;
@@ -386,23 +386,44 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
       const statusEl = document.getElementById('vsl-save-status');
       statusEl.textContent = 'Saving...';
       try {
-        const payload = {};
-        if (vslId) {
-          payload.vsl_id = parseInt(vslId);
-          payload.vsl_source = 'library';
-        } else if (vslUrl) {
-          payload.vsl_url = vslUrl;
-          payload.vsl_source = 'url';
-        } else {
-          payload.vsl_source = 'none';
+        // Find existing VSL block or create one
+        let vslBlockIdx = blocks.findIndex(b => b.type === 'vsl');
+        if (vslBlockIdx === -1) {
+          blocks.push({ type: 'vsl', vsl_url: '', vsl_file: '', caption: '' });
+          vslBlockIdx = blocks.length - 1;
         }
-        const res = await fetch('/admin/variants/${req.params.id}/vsl', {
+        if (vslId) {
+          // Library VSL — resolve actual URL from VSL_LIBRARY
+          const libVsl = VSL_LIBRARY.find(v => String(v.id) === String(vslId));
+          const resolvedUrl = libVsl ? (libVsl.url || libVsl.file_path || '') : '';
+          blocks[vslBlockIdx].vsl_library_id = parseInt(vslId);
+          blocks[vslBlockIdx].vsl_url = libVsl && libVsl.type === 'url' ? resolvedUrl : '';
+          blocks[vslBlockIdx].vsl_file = libVsl && libVsl.type === 'file' ? resolvedUrl : '';
+        } else if (vslUrl) {
+          blocks[vslBlockIdx].vsl_library_id = null;
+          blocks[vslBlockIdx].vsl_url = vslUrl;
+          blocks[vslBlockIdx].vsl_file = '';
+        } else {
+          blocks[vslBlockIdx].vsl_url = '';
+          blocks[vslBlockIdx].vsl_file = '';
+          blocks[vslBlockIdx].vsl_library_id = null;
+        }
+        // Save blocks
+        dirty = true;
+        const res = await fetch('/admin/variants/${req.params.id}/builder/save', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ blocks })
         });
         const data = await res.json();
-        statusEl.textContent = data.ok ? '\u2705 Saved' : ('\u274c Error: ' + (data.error || 'unknown'));
+        if (data.ok) {
+          dirty = false; markSaved();
+          statusEl.textContent = '\u2705 VSL saved';
+          render();
+          refreshPreview();
+        } else {
+          statusEl.textContent = '\u274c Error: ' + (data.error || 'unknown');
+        }
       } catch(e) {
         statusEl.textContent = '\u274c Error: ' + e.message;
       }

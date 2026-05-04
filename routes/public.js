@@ -44,6 +44,15 @@ router.get('/r/:slug', async (req, res) => {
   await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: ua });
 
   res.cookie('mfc_ref', slug, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+
+  // If this tracking link has a forced variant, pin it via cookie
+  if (link.forced_variant_id) {
+    res.cookie('mfc_forced_variant', String(link.forced_variant_id), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+  } else {
+    // Clear any previously forced variant so normal rotation applies
+    res.clearCookie('mfc_forced_variant');
+  }
+
   res.redirect(link.destination || '/');
 });
 
@@ -214,7 +223,15 @@ router.get('/confirmed', async (req, res) => {
 // Homepage — serve active variant from unified rotation (includes super admin's hidden variants)
 router.get('/', async (req, res, next) => {
   try {
-    let variantId = await getActiveVariant();
+    // Check for a tracking-link-forced variant first; fall back to rotation engine
+    let variantId = null;
+    const forcedId = req.cookies?.mfc_forced_variant ? parseInt(req.cookies.mfc_forced_variant) : null;
+    if (forcedId) {
+      // Verify the forced variant actually exists before trusting the cookie
+      const { data: check } = await supabase.from('variants').select('id').eq('id', forcedId).single();
+      if (check) variantId = forcedId;
+    }
+    if (!variantId) variantId = await getActiveVariant();
 
     if (!variantId) return next();
 

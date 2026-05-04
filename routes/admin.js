@@ -372,10 +372,14 @@ router.post('/testimonials/:id/delete', requireAuth, async (req, res) => {
 // Tracking Links
 router.get('/tracking', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
+  const owners = getAdminOwners(adminId);
   const adminLinkSlugs = await getAdminLinkSlugs(adminId);
   let linksQ = supabase.from('tracking_links').select('*').order('created_at', { ascending: false });
   if (adminLinkSlugs !== null) linksQ = adminLinkSlugs.length > 0 ? linksQ.in('slug', adminLinkSlugs) : linksQ.eq('slug', '__none__');
-  const { data: links } = await linksQ;
+  const [{ data: links }, { data: variants }] = await Promise.all([
+    linksQ,
+    supabase.from('variants').select('id, name').in('owner', owners).order('created_at'),
+  ]);
   const slugList = (links || []).map(l => l.slug);
   let visits = [], sigs = [];
   if (slugList.length > 0) {
@@ -390,16 +394,28 @@ router.get('/tracking', requireAuth, async (req, res) => {
   const msg = req.query.msg;
   const host = req.headers.host || 'myfirstcreator.ai';
 
+  // Build variant name lookup
+  const variantNames = {};
+  (variants||[]).forEach(v => { variantNames[v.id] = v.name; });
+
+  const variantOptions = `<option value="">— Use rotation (default) —</option>` +
+    (variants||[]).map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+
   const rows = (links||[]).map(l => {
     const visits = vMap[l.slug]||0, convs = sMap[l.slug]||0;
     const url = `https://${host}/r/${l.slug}`;
+    const forcedLabel = l.forced_variant_id && variantNames[l.forced_variant_id]
+      ? `<span class="badge badge-purple" style="font-size:11px">${variantNames[l.forced_variant_id]}</span>`
+      : `<span style="color:#475569;font-size:12px">rotation</span>`;
     return `<tr>
       <td><span class="slug-preview">/r/${l.slug}</span></td>
-      <td>${l.name||'—'}</td><td style="font-size:12px;color:#64748b">${l.destination}</td>
+      <td>${l.name||'—'}</td>
+      <td>${forcedLabel}</td>
       <td>${visits}</td><td>${convs}</td><td>${visits>0?((convs/visits)*100).toFixed(1)+'%':'—'}</td>
       <td style="font-size:12px;color:#64748b">${new Date(l.created_at).toLocaleDateString()}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+        <a href="/admin/tracking/${l.id}/edit" class="btn btn-ghost btn-sm">Edit</a>
         <form method="POST" action="/admin/tracking/${l.id}/delete" style="display:inline" onsubmit="return confirm('Delete?')"><button class="btn btn-danger btn-sm">Delete</button></form>
       </td>
     </tr>`;
@@ -409,32 +425,79 @@ router.get('/tracking', requireAuth, async (req, res) => {
     ${msg==='added'?'<div class="alert alert-success">✅ Link created.</div>':''}
     ${msg==='exists'?'<div class="alert alert-error">⚠️ Slug already exists.</div>':''}
     ${msg==='deleted'?'<div class="alert alert-success">✅ Deleted.</div>':''}
+    ${msg==='saved'?'<div class="alert alert-success">✅ Link updated.</div>':''}
     <div class="card">
       <div class="card-title">Create New Link</div>
-      <form method="POST" action="/admin/tracking" class="flex" style="flex-wrap:wrap;gap:12px;align-items:flex-end">
-        <div class="form-group" style="margin:0;flex:1;min-width:140px"><label>Slug *</label><input type="text" name="slug" required placeholder="instagram" pattern="[a-z0-9-_]+"></div>
-        <div class="form-group" style="margin:0;flex:1;min-width:140px"><label>Label</label><input type="text" name="name" placeholder="Instagram Bio"></div>
-        <div class="form-group" style="margin:0;flex:1;min-width:200px"><label>Destination</label><input type="text" name="destination" value="/"></div>
-        <button type="submit" class="btn btn-primary" style="margin-bottom:0">Create</button>
+      <form method="POST" action="/admin/tracking" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
+        <div class="form-group" style="margin:0"><label>Slug *</label><input type="text" name="slug" required placeholder="instagram" pattern="[a-z0-9-_]+"></div>
+        <div class="form-group" style="margin:0"><label>Label</label><input type="text" name="name" placeholder="Instagram Bio"></div>
+        <div class="form-group" style="margin:0"><label>Destination</label><input type="text" name="destination" value="/"></div>
+        <div class="form-group" style="margin:0"><label>Force Variant</label><select name="forced_variant_id">${variantOptions}</select></div>
+        <div style="margin-bottom:0"><button type="submit" class="btn btn-primary" style="width:100%">Create</button></div>
       </form>
     </div>
     <div class="card">
       <div class="card-title">${(links||[]).length} Links</div>
-      ${links?.length ? `<table><thead><tr><th>Slug</th><th>Label</th><th>Dest</th><th>Visits</th><th>Signups</th><th>CVR</th><th>Created</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No links yet.</div>'}
+      ${links?.length ? `<table><thead><tr><th>Slug</th><th>Label</th><th>Variant</th><th>Visits</th><th>Signups</th><th>CVR</th><th>Created</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No links yet.</div>'}
     </div>
   `, 'tracking'));
 });
 
 router.post('/tracking', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const { slug, name, destination } = req.body;
+  const { slug, name, destination, forced_variant_id } = req.body;
   const clean = slug.toLowerCase().replace(/[^a-z0-9-_]/g, '');
   if (!clean) return res.redirect('/admin/tracking');
   const { data: existing } = await supabase.from('tracking_links').select('id').eq('slug', clean).single();
   if (existing) return res.redirect('/admin/tracking?msg=exists');
-  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/' });
+  const forcedId = forced_variant_id ? parseInt(forced_variant_id) : null;
+  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/', forced_variant_id: forcedId || null });
   await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
+});
+
+// Edit tracking link page
+router.get('/tracking/:id/edit', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const owners = getAdminOwners(adminId);
+  const [{ data: link }, { data: variants }] = await Promise.all([
+    supabase.from('tracking_links').select('*').eq('id', req.params.id).single(),
+    supabase.from('variants').select('id, name').in('owner', owners).order('created_at'),
+  ]);
+  if (!link) return res.redirect('/admin/tracking');
+
+  const variantOptions = `<option value="">— Use rotation (default) —</option>` +
+    (variants||[]).map(v => `<option value="${v.id}" ${String(v.id) === String(link.forced_variant_id) ? 'selected' : ''}>${v.name}</option>`).join('');
+
+  res.send(layout('Edit Tracking Link', `
+    <div class="card">
+      <div class="card-title">Edit: /r/${link.slug}</div>
+      <form method="POST" action="/admin/tracking/${link.id}/edit">
+        <div class="form-group"><label>Label</label><input type="text" name="name" value="${link.name||''}"></div>
+        <div class="form-group"><label>Destination</label><input type="text" name="destination" value="${link.destination||'/'}"></div>
+        <div class="form-group">
+          <label>Force Variant <span style="color:#64748b;font-weight:normal;font-size:12px">(override rotation for visitors from this link)</span></label>
+          <select name="forced_variant_id">${variantOptions}</select>
+        </div>
+        <div class="flex" style="gap:12px">
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+          <a href="/admin/tracking" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </div>
+  `, 'tracking'));
+});
+
+// Save tracking link edits
+router.post('/tracking/:id/edit', requireAuth, async (req, res) => {
+  const { name, destination, forced_variant_id } = req.body;
+  const forcedId = forced_variant_id ? parseInt(forced_variant_id) : null;
+  await supabase.from('tracking_links').update({
+    name: name || null,
+    destination: destination || '/',
+    forced_variant_id: forcedId || null,
+  }).eq('id', req.params.id);
+  res.redirect('/admin/tracking?msg=saved');
 });
 
 router.post('/tracking/:id/delete', requireAuth, async (req, res) => {

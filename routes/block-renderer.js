@@ -97,7 +97,7 @@ function renderTestimonials(b, testimonialData) {
       <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
       <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle||''}</div>
       ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
-      <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.5">${t.quote ? `"${t.quote}"` : ""}</div>
     </div>`;
   };
   const cardList = items.map(makeCard);

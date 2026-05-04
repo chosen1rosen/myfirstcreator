@@ -65,7 +65,7 @@ async function loadTestimonials() {
     const grid = document.getElementById('testimonials-grid');
     const section = document.getElementById('testimonials-section');
 
-    grid.innerHTML = testimonials.map(t => {
+    grid.innerHTML = testimonials.filter(t => t.type !== "telegram").map(t => {
       const initial = t.name.charAt(0).toUpperCase();
       const avatar = t.image_path
         ? `<div class="tcard-avatar"><img src="${t.image_path}" alt="${t.name}"></div>`
@@ -81,7 +81,7 @@ async function loadTestimonials() {
             </div>
           </div>
           ${t.earnings ? `<div class="tcard-earnings">💰 ${t.earnings}</div>` : ''}
-          <div class="tcard-quote">"${t.quote}"</div>
+          ${t.quote ? `<div class="tcard-quote">"${t.quote}"</div>` : ""}
         </div>`;
     }).join('');
 

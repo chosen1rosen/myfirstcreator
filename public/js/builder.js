@@ -14,6 +14,13 @@
       image_text: { type:'image_text', title:'Your Title', body:'Your description text goes here.', cta_text:'', image_url:'', image_side:'left', label:'', cta_destination:'signup', cta_link:'' },
       cta_banner: { type:'cta_banner', headline:'Ready to Start?', subheadline:'Join thousands already earning with AI creators.', cta_text:'Claim Your Spot →', bg_color:'linear-gradient(135deg,#7c3aed,#06b6d4)', text_color:'white', cta_destination:'signup', cta_link:'' },
       html: { type:'html', content:'<p style="color:#e2e8f0;text-align:center;padding:40px">Your custom HTML here</p>' },
+      how_it_works: { type:'how_it_works', title:'HOW IT WORKS', steps:[
+        { title:'Choose your 100% Free AI Creator', description:'Pick from our library of AI creators — no upfront cost, no technical skills required.', image:'', color:'#ff3366' },
+        { title:'Watch Our Free Education', description:'Access our complete training library to learn how to grow and monetize your AI creator.', image:'', color:'#7c3aed' },
+        { title:'Generate Unlimited Content on our Apex AI Generator', description:'Create professional photos and videos for TikTok, Reels, and more with one click.', image:'', color:'#06b6d4' },
+        { title:'Go Viral', description:'Your AI creator stays 100% consistent across every post, building a real audience fast.', image:'', color:'#ff3366' },
+        { title:'Get Paid', description:'Earn through fan subscriptions, brand deals, and automated revenue streams — you keep 60%.', image:'', color:'#22c55e' }
+      ]},
     };
 
     // ── Render block list ────────────────────────────────────────────────────
@@ -79,6 +86,7 @@
         case 'image_text': return f('title','Title') + ta('body','Body Text') + f('cta_text','CTA Button (optional)') + ctaDest(b, i) + f('image_url','Image URL') + sel('image_side','Image Position',[{v:'left',l:'Image Left'},{v:'right',l:'Image Right'}]) + f('label','Label (optional)');
         case 'cta_banner': return f('headline','Headline') + f('subheadline','Subheadline') + f('cta_text','Button Text') + ctaDest(b, i) + f('bg_color','Background','text','placeholder="linear-gradient(135deg,#7c3aed,#06b6d4)"') + f('text_color','Text Color','text','placeholder="white"');
         case 'html': return `<div class="field"><label>Custom HTML</label><textarea rows="8" onchange="updateField(${i},'content',this.value)">${esc(b.content||'')}</textarea></div>`;
+        case 'how_it_works': return renderHowItWorksForm(b, i);
         default: return '<p style="color:#64748b;font-size:13px">No options for this block type.</p>';
       }
     }
@@ -216,6 +224,40 @@
 
     function removeFeatureItem(blockIdx, itemIdx) {
       blocks[blockIdx].items.splice(itemIdx, 1);
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+
+    function renderHowItWorksForm(b, i) {
+      var steps = b.steps || [];
+      var rows = steps.map(function(step, j) {
+        return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
+          + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">STEP ' + (j+1) + ' <button onclick="removeHowItWorksStep(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
+          + '<div class="field"><label>Title</label><input type="text" value="' + esc(step.title||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'title\',this.value)"></div>'
+          + '<div class="field"><label>Description</label><textarea rows="2" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'description\',this.value)">' + esc(step.description||'') + '</textarea></div>'
+          + '<div class="field"><label>Background Image URL (optional)</label><input type="text" value="' + esc(step.image||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>'
+          + '<div class="field"><label>Arrow Button Color</label><input type="text" value="' + esc(step.color||'#ff3366') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'color\',this.value)" placeholder="#ff3366"></div>'
+          + '</div>';
+      }).join('');
+      const f = (key, label) => `<div class="field"><label>${label}</label><input type="text" value="${esc(b[key]||'')}" onchange="updateField(${i},'${key}',this.value)"></div>`;
+      return f('title', 'Section Title')
+        + '<div style="margin-top:12px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Steps</div>'
+        + rows
+        + '<button onclick="addHowItWorksStep(' + i + ')" class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px">+ Add Step</button></div>';
+    }
+
+    function updateHowItWorksStep(blockIdx, stepIdx, key, val) {
+      if (!blocks[blockIdx].steps) blocks[blockIdx].steps = [];
+      blocks[blockIdx].steps[stepIdx][key] = val;
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function addHowItWorksStep(blockIdx) {
+      if (!blocks[blockIdx].steps) blocks[blockIdx].steps = [];
+      blocks[blockIdx].steps.push({ title:'New Step', description:'', image:'', color:'#ff3366' });
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+    function removeHowItWorksStep(blockIdx, stepIdx) {
+      if (!blocks[blockIdx].steps) return;
+      blocks[blockIdx].steps.splice(stepIdx, 1);
       dirty = true; markUnsaved(); render(); debouncePreview();
     }
 

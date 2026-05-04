@@ -10,6 +10,7 @@ const BLOCK_TYPES = [
   { type: 'cta_banner',    label: '🚀 CTA Banner' },
   { type: 'calendar_add',  label: '📅 Add to Calendar' },
   { type: 'html',          label: '💻 Custom HTML' },
+  { type: 'how_it_works',  label: '📋 How It Works' },
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
 
@@ -26,6 +27,7 @@ function renderBlock(block, testimonialData = []) {
     case 'cta_banner': return renderCTABanner(block);
     case 'calendar_add': return renderCalendarAdd(block);
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
+    case 'how_it_works': return renderHowItWorks(block);
     default: return ''
   }
 }
@@ -306,6 +308,39 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
   </script>
 </body>
 </html>`;
+}
+
+function renderHowItWorks(b) {
+  const title = b.title || 'HOW IT WORKS';
+  const steps = b.steps || [];
+
+  const cards = steps.map((step, idx) => {
+    const bg = step.image
+      ? `<img src="${step.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.7" alt="">`
+      : '';
+    const cardBg = step.image ? '' : 'background:linear-gradient(135deg,#1a1a2e,#0d0d14);';
+    const btnColor = step.color || '#ff3366';
+    return `
+    <div style="position:relative;border-radius:20px;overflow:hidden;min-height:380px;${cardBg}">
+      ${bg}
+      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.3) 50%,transparent 100%)"></div>
+      <div style="position:absolute;bottom:0;left:0;right:0;padding:24px">
+        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:900;color:white;text-transform:uppercase;line-height:1.1;margin-bottom:8px;padding-right:52px">${step.title || 'Step ' + (idx+1)}</div>
+        ${step.description ? `<p style="font-size:13px;color:rgba(255,255,255,0.7);line-height:1.5;margin:0;padding-right:52px">${step.description}</p>` : ''}
+      </div>
+      <div style="position:absolute;bottom:24px;right:24px;width:42px;height:42px;border-radius:50%;background:${btnColor};display:flex;align-items:center;justify-content:center;font-size:18px;color:white;font-weight:700">→</div>
+    </div>`;
+  }).join('');
+
+  return `
+  <section style="padding:80px 20px;background:#080810">
+    <div style="max-width:1200px;margin:0 auto">
+      <h2 style="text-align:center;font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:white;margin-bottom:48px">${title}</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
+        ${cards}
+      </div>
+    </div>
+  </section>`;
 }
 
 module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES };

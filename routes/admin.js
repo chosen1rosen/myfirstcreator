@@ -490,7 +490,8 @@ router.post('/testimonials', requireAuth, upload.single('image'), async (req, re
 router.post('/testimonials/telegram', requireAuth, async (req, res) => {
   const { name, telegram_url } = req.body;
   if (!name || !telegram_url) return res.redirect('/admin/testimonials?msg=error');
-  await supabase.from('testimonials').insert({ name, telegram_url, type: 'telegram', active: true });
+  const { error } = await supabase.from('testimonials').insert({ name, quote: null, telegram_url, type: 'telegram', active: true });
+  if (error) { console.error('Telegram testimonial insert error:', error.message); return res.redirect('/admin/testimonials?msg=error'); }
   res.redirect('/admin/testimonials?msg=added');
 });
 

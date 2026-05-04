@@ -45,10 +45,22 @@ function renderHero(b) {
   </section>`;
 }
 
+function toEmbedUrl(url) {
+  if (!url) return url;
+  // Convert YouTube watch URLs to embed URLs
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+  if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1];
+  // Convert Vimeo watch URLs to embed URLs
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeoMatch) return 'https://player.vimeo.com/video/' + vimeoMatch[1];
+  return url;
+}
+
 function renderVSL(b) {
   if (!b.vsl_url && !b.vsl_file) return '';
-  const content = b.vsl_url
-    ? `<div class="vsl-wrap"><iframe src="${b.vsl_url}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
+  const embedUrl = toEmbedUrl(b.vsl_url);
+  const content = embedUrl
+    ? `<div class="vsl-wrap"><iframe src="${embedUrl}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
     : `<video src="${b.vsl_file}" controls style="width:100%;border-radius:16px"></video>`;
   return `
   <section class="block-vsl" style="padding:48px 20px;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">

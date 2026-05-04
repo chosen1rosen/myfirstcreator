@@ -513,11 +513,18 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
       dirty = true; markUnsaved(); render(); refreshPreview();
     }
 
-    document.getElementById('ai-input').addEventListener('keydown', e => {
+    const aiInput = document.getElementById('ai-input');
+    if (aiInput) aiInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage(); }
     });
 
-    init();
+    try {
+      init();
+    } catch(e) {
+      console.error('Builder init error:', e);
+      const grid = document.getElementById('block-type-buttons');
+      if (grid) grid.innerHTML = '<div style="color:#f87171;font-size:12px;padding:8px">⚠️ Builder error: ' + e.message + '</div>';
+    }
     </script>
   `, 'variants'));
 });

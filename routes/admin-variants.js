@@ -597,8 +597,8 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .carousel-viewport{overflow:hidden}
     .carousel-track{display:flex;gap:12px;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);align-items:flex-start}
     .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid rgba(255,255,255,0.07);border-radius:24px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
-    .testimonial-card.tg-card{padding:4px;background:transparent;border:none;box-shadow:none}
-    @media(max-width:768px){.testimonial-card{flex:0 0 calc(47% - 6px)}.testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
+    .testimonial-card.tg-card{padding:4px;background:transparent;border:none;box-shadow:none;max-height:420px;overflow:hidden;border-radius:16px}
+    @media(max-width:768px){.testimonial-card{flex:0 0 calc(47% - 6px)}.testimonial-card.tg-card{max-height:300px}.testimonials-carousel-wrap{padding:0 16px}.carousel-track{gap:12px}}
     .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1;backdrop-filter:blur(4px)}
     .car-prev{left:0}.car-next{right:0}
     .section-header{text-align:center;margin-bottom:8px}

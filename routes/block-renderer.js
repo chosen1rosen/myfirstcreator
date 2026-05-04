@@ -295,7 +295,7 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     @media(max-width:768px){
       .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden}
       .tg-mobile-preview{display:none}
-      .tg-desktop-embed{display:block;zoom:0.58;border-radius:20px;overflow:hidden}
+      .tg-desktop-embed{display:block;width:172%;zoom:0.58}
     }
     @media(max-width:768px){.testimonial-card{flex:0 0 88%}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}

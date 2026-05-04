@@ -202,6 +202,91 @@ router.post('/vsl/signed-url', requireAuth, async (req, res) => {
   res.json({ signedUrl: data.signedUrl, token: data.token, path, publicUrl });
 });
 
+// TUS chunked upload — init session
+router.post('/vsl/tus-init', requireAuth, async (req, res) => {
+  try {
+    const { filename, mimetype, size } = req.body;
+    const ext = (filename || 'video.mp4').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'') || 'mp4';
+    const path = `vsl/vsl-${Date.now()}.${ext}`;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const bucketName = 'mfc-assets';
+
+    const b64 = s => Buffer.from(s).toString('base64');
+    const metadata = [
+      `bucketName ${b64(bucketName)}`,
+      `objectName ${b64(path)}`,
+      `contentType ${b64(mimetype || 'video/mp4')}`,
+    ].join(',');
+
+    const resp = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'x-upsert': 'true',
+        'Upload-Length': String(size),
+        'Tus-Resumable': '1.0.0',
+        'Upload-Metadata': metadata,
+      }
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(500).json({ error: `TUS init failed: ${errText}` });
+    }
+
+    const location = resp.headers.get('Location') || '';
+    // Location is like: /storage/v1/upload/resumable/UPLOAD_ID or full URL
+    const uploadId = location.split('/').filter(Boolean).pop();
+    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
+
+    res.json({ uploadId, path, publicUrl });
+  } catch (err) {
+    console.error('TUS init error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// TUS chunked upload — proxy a chunk
+router.patch('/vsl/tus-chunk', requireAuth, express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
+  // req.body is now a Buffer
+  const uploadId = req.headers['x-upload-id'];
+  const offset = req.headers['x-upload-offset'];
+
+  if (!uploadId || offset === undefined) {
+    return res.status(400).json({ error: 'Missing upload-id or offset' });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+
+  try {
+    const resp = await fetch(`${supabaseUrl}/storage/v1/upload/resumable/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'Content-Type': 'application/offset+octet-stream',
+        'Content-Length': String(req.body.length),
+        'Upload-Offset': offset,
+        'Tus-Resumable': '1.0.0',
+      },
+      body: req.body,
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(500).json({ error: errText });
+    }
+
+    const newOffset = resp.headers.get('upload-offset');
+    res.json({ offset: parseInt(newOffset || '0') });
+  } catch (err) {
+    console.error('TUS chunk proxy error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // VSL: confirm upload — INSERT into vsls table (new library system)
 router.post('/vsl/confirm', requireAuth, async (req, res) => {
   const { vsl_type, vsl_url, publicUrl, name } = req.body;
@@ -351,42 +436,73 @@ router.get('/vsl', requireAuth, async (req, res) => {
     async function doUpload() {
       const file = document.getElementById('upload-file').files[0];
       if (!file) { alert('Please select a file first.'); return; }
+      const nameVal = document.getElementById('upload-name').value.trim();
       const btn = document.getElementById('upload-btn');
       btn.disabled = true; btn.textContent = 'Uploading...';
       document.getElementById('upload-progress-wrap').style.display = '';
+      document.getElementById('upload-status').textContent = 'Preparing upload...';
 
-      // Get signed URL
-      const sigRes = await fetch('/admin/vsl/signed-url', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ filename: file.name, mimetype: file.type }) });
-      const sig = await sigRes.json();
-      if (sig.error) { alert('Error: ' + sig.error); btn.disabled = false; btn.textContent = 'Upload & Add to Library'; return; }
+      try {
+        // Step 1: Init TUS session
+        const initRes = await fetch('/admin/vsl/tus-init', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ filename: file.name, mimetype: file.type || 'video/mp4', size: file.size })
+        });
+        const init = await initRes.json();
+        if (init.error) throw new Error(init.error);
 
-      // Upload to Supabase
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', sig.signedUrl);
-        xhr.setRequestHeader('Content-Type', file.type);
-        xhr.upload.onprogress = e => {
-          if (e.lengthComputable) {
-            const pct = Math.round(e.loaded / e.total * 100);
-            document.getElementById('upload-bar').style.width = pct + '%';
-            document.getElementById('upload-pct').textContent = pct + '%';
-            document.getElementById('upload-status').textContent = pct < 100 ? 'Uploading... ' + pct + '%' : 'Processing...';
+        // Step 2: Upload in 4MB chunks
+        const CHUNK_SIZE = 4 * 1024 * 1024;
+        let offset = 0;
+        while (offset < file.size) {
+          const chunk = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+          const chunkBuffer = await chunk.arrayBuffer();
+          const pct = Math.round(offset / file.size * 100);
+          document.getElementById('upload-bar').style.width = pct + '%';
+          document.getElementById('upload-pct').textContent = pct + '%';
+          document.getElementById('upload-status').textContent = 'Uploading... ' + pct + '%';
+
+          const patchRes = await fetch('/admin/vsl/tus-chunk', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/offset+octet-stream',
+              'x-upload-id': init.uploadId,
+              'x-upload-offset': String(offset),
+              'x-total-size': String(file.size),
+            },
+            body: chunkBuffer,
+          });
+          if (!patchRes.ok) {
+            const errData = await patchRes.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errData.error || 'Chunk upload failed');
           }
-        };
-        xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Upload failed: ' + xhr.status));
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.send(file);
-      }).catch(err => { alert(err.message); btn.disabled = false; btn.textContent = 'Upload & Add to Library'; throw err; });
+          const patchData = await patchRes.json();
+          offset = patchData.offset;
+        }
 
-      // Confirm (inserts into vsls table)
-      const nameVal = document.getElementById('upload-name').value.trim();
-      const confirmRes = await fetch('/admin/vsl/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ vsl_type: 'file', publicUrl: sig.publicUrl, name: nameVal || '' }) });
-      const confirmData = await confirmRes.json();
+        document.getElementById('upload-bar').style.width = '100%';
+        document.getElementById('upload-pct').textContent = '100%';
+        document.getElementById('upload-status').textContent = 'Processing...';
 
-      document.getElementById('upload-status').textContent = '✅ Upload complete!';
-      document.getElementById('upload-result').innerHTML = '<div class="alert alert-success">✅ VSL added to library: <strong>' + (confirmData.vsl?.name || 'Video') + '</strong></div>';
-      btn.disabled = false; btn.textContent = 'Upload & Add to Library';
-      setTimeout(() => location.reload(), 1500);
+        // Step 3: Confirm (insert into vsls table)
+        const confirmRes = await fetch('/admin/vsl/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ vsl_type: 'file', publicUrl: init.publicUrl, name: nameVal || '' })
+        });
+        const confirmData = await confirmRes.json();
+        if (!confirmData.success) throw new Error(confirmData.error || 'Confirm failed');
+
+        document.getElementById('upload-status').textContent = '\u2705 Upload complete!';
+        document.getElementById('upload-result').innerHTML = '<div class="alert alert-success">\u2705 VSL added: <strong>' + (confirmData.vsl?.name || 'Video') + '</strong></div>';
+        btn.disabled = false; btn.textContent = 'Upload & Add to Library';
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        document.getElementById('upload-status').textContent = '\u274c ' + err.message;
+        document.getElementById('upload-result').innerHTML = '<div class="alert alert-error">Upload failed: ' + err.message + '</div>';
+        btn.disabled = false; btn.textContent = 'Upload & Add to Library';
+      }
     }
     function startRename(id, btn) {
       document.getElementById('rename-form-' + id).style.display = '';

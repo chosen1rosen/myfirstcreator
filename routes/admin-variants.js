@@ -510,14 +510,22 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
   const trustItems = (variant.trust_items || '✅ 100% Free\n🔒 No Credit Card\n⚡ Instant Access').split('\n').filter(Boolean);
 
-  const testimonialHTML = testimonials.map(t => `
-    <div class="testimonial-card">
+  const testimonialCards = testimonials.map(t => {
+    if (t.type === 'telegram' && t.telegram_url) {
+      const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+    }
+    return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
       <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
       <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle || ''}</div>
       ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
       <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
-    </div>`).join('');
+    </div>`;
+  });
+  const testimonialHTML = testimonialCards.join('');
+  // Duplicate cards for infinite carousel loop
+  const carouselCards = [...testimonialCards, ...testimonialCards].join('');
 
   // Resolve VSL — vslData from library takes priority, then variant fields
   let vslSrc = null;
@@ -566,8 +574,14 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600;margin-bottom:12px}
     .testimonials-section{padding:72px 20px;background:rgba(124,58,237,.03)}
-    .testimonials-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:32px}
-    .testimonial-card{background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonials-carousel-wrap{position:relative;overflow:hidden;padding:0 40px}
+    .carousel-viewport{overflow:hidden}
+    .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease}
+    .testimonial-card{flex:0 0 calc(33.333% - 14px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center;min-height:180px}
+    .testimonial-card.tg-card{min-height:320px;padding:12px}
+    @media(max-width:768px){.testimonial-card{flex:0 0 100%}.testimonials-carousel-wrap{padding:0 32px}}
+    .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1}
+    .car-prev{left:0}.car-next{right:0}
     .section-header{text-align:center;margin-bottom:8px}
     .section-header h2{font-size:clamp(24px,4vw,36px);font-weight:700}
     .final-cta{padding:80px 20px;text-align:center;background:linear-gradient(180deg,transparent,rgba(124,58,237,.08))}
@@ -605,9 +619,45 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   <section class="testimonials-section">
     <div class="container">
       <div class="section-header"><div class="section-label">💬 Real Results</div><h2>Creators Already Winning</h2></div>
-      <div class="testimonials-grid">${testimonialHTML}</div>
+      <div class="testimonials-carousel-wrap" id="car-wrap" style="margin-top:32px">
+        <button class="car-btn car-prev" onclick="carMove(-1)">&#8249;</button>
+        <div class="carousel-viewport">
+          <div class="carousel-track" id="car-track">${carouselCards}</div>
+        </div>
+        <button class="car-btn car-next" onclick="carMove(1)">&#8250;</button>
+      </div>
     </div>
-  </section>` : ''}
+  </section>
+  <script>
+  (function(){
+    var track = document.getElementById('car-track');
+    var wrap = document.getElementById('car-wrap');
+    if (!track) return;
+    var cards = track.querySelectorAll('.testimonial-card');
+    var total = ${testimonials.length}; // real count (half of duplicated)
+    var current = 0;
+    var timer;
+    function cardWidth() {
+      return cards[0] ? cards[0].offsetWidth + 20 : 0;
+    }
+    function goTo(idx, animate) {
+      if (animate === false) track.style.transition = 'none';
+      else track.style.transition = 'transform 0.5s ease';
+      track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
+    }
+    track.addEventListener('transitionend', function() {
+      if (current >= total) { current = current - total; goTo(current, false); }
+      if (current < 0) { current = current + total; goTo(current, false); }
+    });
+    function advance() { current++; goTo(current, true); }
+    function startTimer() { timer = setInterval(advance, 3500); }
+    function stopTimer() { clearInterval(timer); }
+    startTimer();
+    wrap.addEventListener('mouseenter', stopTimer);
+    wrap.addEventListener('mouseleave', startTimer);
+    window.carMove = function(dir) { stopTimer(); current += dir; goTo(current, true); startTimer(); };
+  })();
+  <\/script>` : ''}
 
   <section class="final-cta">
     <div class="container">

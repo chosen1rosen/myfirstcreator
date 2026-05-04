@@ -411,35 +411,63 @@ router.get('/testimonials', requireAuth, async (req, res) => {
   const { data: testimonials } = await supabase.from('testimonials').select('*').order('sort_order').order('id');
   const msg = req.query.msg;
 
-  const rows = (testimonials || []).map(t => `
+  const rows = (testimonials || []).map(t => {
+    const isTg = t.type === 'telegram';
+    return `
     <tr>
       <td>${t.id}</td>
-      <td>${t.image_path ? `<img src="${t.image_path}" width="40" height="40" style="border-radius:50%;object-fit:cover">` : '—'}</td>
+      <td>${isTg ? '<span class="badge" style="background:#0088cc;color:#fff">TG</span>' : (t.image_path ? `<img src="${t.image_path}" width="40" height="40" style="border-radius:50%;object-fit:cover">` : '—')}</td>
       <td><strong>${t.name}</strong>${t.handle ? `<br><span style="color:#64748b;font-size:12px">${t.handle}</span>` : ''}</td>
-      <td>${t.earnings ? `<span class="badge badge-green">${t.earnings}</span>` : '—'}</td>
-      <td style="max-width:300px;color:#94a3b8;font-size:13px">"${t.quote}"</td>
+      <td>${isTg ? '—' : (t.earnings ? `<span class="badge badge-green">${t.earnings}</span>` : '—')}</td>
+      <td style="max-width:300px;color:#94a3b8;font-size:13px">${isTg ? `<a href="${t.telegram_url}" target="_blank" style="color:#0088cc;font-size:12px">${(t.telegram_url||'').substring(0,60)}${(t.telegram_url||'').length>60?'…':''}</a>` : `"${t.quote || ''}"`}</td>
       <td><span class="badge ${t.active ? 'badge-green' : 'badge-gray'}">${t.active ? 'Active' : 'Hidden'}</span></td>
       <td>
         <form method="POST" action="/admin/testimonials/${t.id}/toggle" style="display:inline"><button class="btn btn-ghost btn-sm">${t.active ? 'Hide' : 'Show'}</button></form>
         <form method="POST" action="/admin/testimonials/${t.id}/delete" style="display:inline" onsubmit="return confirm('Delete?')"><button class="btn btn-danger btn-sm">Delete</button></form>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   res.send(layout('Testimonials', `
     ${msg === 'added' ? '<div class="alert alert-success">✅ Testimonial added.</div>' : ''}
     ${msg === 'deleted' ? '<div class="alert alert-success">✅ Deleted.</div>' : ''}
     <div class="card">
       <div class="card-title">Add Testimonial</div>
-      <form method="POST" action="/admin/testimonials" enctype="multipart/form-data">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="form-group"><label>Name *</label><input type="text" name="name" required placeholder="John Doe"></div>
-          <div class="form-group"><label>Handle</label><input type="text" name="handle" placeholder="@johndoe"></div>
-          <div class="form-group"><label>Earnings Claim</label><input type="text" name="earnings" placeholder="$3,200 in 30 days"></div>
-          <div class="form-group"><label>Profile Photo</label><input type="file" name="image" accept="image/*"></div>
-        </div>
-        <div class="form-group"><label>Quote *</label><textarea name="quote" required placeholder="Their testimonial..."></textarea></div>
-        <button type="submit" class="btn btn-primary">Add Testimonial</button>
-      </form>
+      <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #1e1e30">
+        <button onclick="showTab('manual')" id="tab-manual" style="padding:10px 24px;background:none;border:none;color:#a78bfa;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px">Manual</button>
+        <button onclick="showTab('telegram')" id="tab-telegram" style="padding:10px 24px;background:none;border:none;color:#94a3b8;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px">Telegram Post</button>
+      </div>
+      <div id="pane-manual">
+        <form method="POST" action="/admin/testimonials" enctype="multipart/form-data">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-group"><label>Name *</label><input type="text" name="name" required placeholder="John Doe"></div>
+            <div class="form-group"><label>Handle</label><input type="text" name="handle" placeholder="@johndoe"></div>
+            <div class="form-group"><label>Earnings Claim</label><input type="text" name="earnings" placeholder="$3,200 in 30 days"></div>
+            <div class="form-group"><label>Profile Photo</label><input type="file" name="image" accept="image/*"></div>
+          </div>
+          <div class="form-group"><label>Quote *</label><textarea name="quote" required placeholder="Their testimonial..."></textarea></div>
+          <button type="submit" class="btn btn-primary">Add Testimonial</button>
+        </form>
+      </div>
+      <div id="pane-telegram" style="display:none">
+        <form method="POST" action="/admin/testimonials/telegram">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="form-group"><label>Label / Name *</label><input type="text" name="name" required placeholder="e.g. John post Jan 2025"></div>
+            <div class="form-group"><label>Telegram Post URL *</label><input type="text" name="telegram_url" required placeholder="https://t.me/mychannel/42"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="background:#0088cc">Add Telegram Testimonial</button>
+        </form>
+      </div>
+      <script>
+        function showTab(tab) {
+          document.getElementById('pane-manual').style.display = tab==='manual' ? '' : 'none';
+          document.getElementById('pane-telegram').style.display = tab==='telegram' ? '' : 'none';
+          document.getElementById('tab-manual').style.color = tab==='manual' ? '#a78bfa' : '#94a3b8';
+          document.getElementById('tab-manual').style.borderBottomColor = tab==='manual' ? '#7c3aed' : 'transparent';
+          document.getElementById('tab-telegram').style.color = tab==='telegram' ? '#a78bfa' : '#94a3b8';
+          document.getElementById('tab-telegram').style.borderBottomColor = tab==='telegram' ? '#7c3aed' : 'transparent';
+        }
+      </script>
     </div>
     <div class="card">
       <div class="card-title">${(testimonials||[]).length} Testimonials</div>
@@ -455,7 +483,14 @@ router.post('/testimonials', requireAuth, upload.single('image'), async (req, re
     const ext = req.file.originalname.split('.').pop();
     image_path = await uploadToStorage('testimonials', `t-${Date.now()}.${ext}`, req.file.buffer, req.file.mimetype);
   }
-  await supabase.from('testimonials').insert({ name, handle: handle||null, earnings: earnings||null, quote, image_path });
+  await supabase.from('testimonials').insert({ name, handle: handle||null, earnings: earnings||null, quote, image_path, type: 'manual' });
+  res.redirect('/admin/testimonials?msg=added');
+});
+
+router.post('/testimonials/telegram', requireAuth, async (req, res) => {
+  const { name, telegram_url } = req.body;
+  if (!name || !telegram_url) return res.redirect('/admin/testimonials?msg=error');
+  await supabase.from('testimonials').insert({ name, telegram_url, type: 'telegram', active: true });
   res.redirect('/admin/testimonials?msg=added');
 });
 

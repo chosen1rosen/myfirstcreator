@@ -81,15 +81,23 @@ function renderTestimonials(b, testimonialData) {
   const limit = parseInt(b.limit) || 6;
   const items = testimonialData.slice(0, limit);
   if (!items.length) return `<section style="padding:48px 20px;text-align:center"><div class="container"><p style="color:#475569">Add testimonials in the Testimonials section of the admin to display them here.</p></div></section>`;
-  const cards = items.map(t => `
-    <div class="testimonial-card">
+  const makeCard = t => {
+    if (t.type === 'telegram' && t.telegram_url) {
+      const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
+      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+    }
+    return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
       <div style="font-size:13px;font-weight:600;color:#f1f5f9">${t.name}</div>
       <div style="font-size:12px;color:#7c3aed;margin-bottom:8px">${t.handle||''}</div>
       ${t.earnings ? `<div style="font-size:20px;font-weight:700;color:#22c55e;margin-bottom:8px">${t.earnings}</div>` : ''}
       <div style="font-size:13px;color:#94a3b8;line-height:1.5">"${t.quote}"</div>
-    </div>`).join('');
-  const layout = b.layout === 'list' ? 'display:flex;flex-direction:column;gap:16px' : 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px';
+    </div>`;
+  };
+  const cardList = items.map(makeCard);
+  // Duplicate for infinite carousel loop
+  const carouselCards = [...cardList, ...cardList].join('');
+  const blockId = 'car-' + Math.random().toString(36).slice(2, 8);
   return `
   <section class="block-testimonials" style="padding:72px 20px;background:rgba(124,58,237,.03)">
     <div class="container">
@@ -97,9 +105,42 @@ function renderTestimonials(b, testimonialData) {
         ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
         ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700">${b.title}</h2>` : ''}
       </div>
-      <div style="${layout}">${cards}</div>
+      <div class="testimonials-carousel-wrap" id="wrap-${blockId}" style="position:relative;overflow:hidden;padding:0 40px">
+        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8249;</button>
+        <div style="overflow:hidden">
+          <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:20px;transition:transform 0.5s ease">${carouselCards}</div>
+        </div>
+        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8250;</button>
+      </div>
     </div>
-  </section>`;
+  </section>
+  <script>
+  (function(){
+    var track = document.getElementById('track-${blockId}');
+    var wrap = document.getElementById('wrap-${blockId}');
+    if (!track) return;
+    var allCards = track.querySelectorAll('.testimonial-card');
+    var total = ${items.length};
+    var current = 0;
+    var timer;
+    function cardWidth() { return allCards[0] ? allCards[0].offsetWidth + 20 : 0; }
+    function goTo(idx, animate) {
+      track.style.transition = animate === false ? 'none' : 'transform 0.5s ease';
+      track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
+    }
+    track.addEventListener('transitionend', function() {
+      if (current >= total) { current -= total; goTo(current, false); }
+      if (current < 0) { current += total; goTo(current, false); }
+    });
+    function advance() { current++; goTo(current, true); }
+    function startTimer() { timer = setInterval(advance, 3500); }
+    function stopTimer() { clearInterval(timer); }
+    startTimer();
+    wrap.addEventListener('mouseenter', stopTimer);
+    wrap.addEventListener('mouseleave', startTimer);
+    window['carMove_${blockId}'] = function(dir) { stopTimer(); current += dir; goTo(current, true); startTimer(); };
+  })();
+  <\/script>`;
 }
 
 function renderFeatures(b) {
@@ -228,7 +269,9 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
-    .testimonial-card{background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
+    .testimonial-card{flex:0 0 calc(33.333% - 14px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center;min-height:180px}
+    .testimonial-card.tg-card{min-height:320px;padding:12px}
+    @media(max-width:768px){.testimonial-card{flex:0 0 100%}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

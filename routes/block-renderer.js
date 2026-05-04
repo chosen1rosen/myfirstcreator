@@ -276,8 +276,8 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
     .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
-    .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden}
-    @media(max-width:768px){.testimonial-card{flex:0 0 92%}.testimonial-card.tg-card{height:360px}}
+    .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden;min-height:200px}
+    @media(max-width:768px){.testimonial-card{flex:0 0 calc(48% - 6px)}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

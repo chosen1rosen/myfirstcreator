@@ -300,31 +300,21 @@ router.get('/confirmed', async (req, res) => {
 });
 
 // Homepage — serve active variant from unified rotation (includes super admin's hidden variants)
-router.get('/', async (req, res, next) => {
+// ─── shared variant renderer ────────────────────────────────────────────────
+async function serveVariant(req, res, next, variantId, trackingSlug) {
   try {
-    // Check for a tracking-link-forced variant first; fall back to rotation engine
-    let variantId = null;
-    const forcedId = req.cookies?.mfc_forced_variant ? parseInt(req.cookies.mfc_forced_variant) : null;
-    if (forcedId) {
-      // Verify the forced variant actually exists before trusting the cookie
-      const { data: check } = await supabase.from('variants').select('id').eq('id', forcedId).single();
-      if (check) variantId = forcedId;
-    }
     if (!variantId) variantId = await getActiveVariant();
-
     if (!variantId) return next();
 
     const { data: variant } = await supabase.from('variants').select('*').eq('id', variantId).single();
     if (!variant) return next();
 
-    // Track visit
     const ip = getIP(req);
-    const slug = req.cookies?.mfc_ref || null;
+    const slug = trackingSlug || req.cookies?.mfc_ref || null;
     await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: req.headers['user-agent'] || '', variant_id: variantId });
     res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
 
     const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(50);
-    // Fetch VSL from library if variant has vsl_id
     let vslData = null;
     if (variant.vsl_id) {
       const { data: vsl } = await supabase.from('vsls').select('*').eq('id', variant.vsl_id).single();
@@ -341,6 +331,49 @@ router.get('/', async (req, res, next) => {
     console.error('Variant render error:', err);
     next();
   }
+}
+
+// Homepage
+router.get('/', async (req, res, next) => {
+  // Check for a tracking-link-forced variant first; fall back to rotation engine
+  let variantId = null;
+  const forcedId = req.cookies?.mfc_forced_variant ? parseInt(req.cookies.mfc_forced_variant) : null;
+  if (forcedId) {
+    const { data: check } = await supabase.from('variants').select('id').eq('id', forcedId).single();
+    if (check) variantId = forcedId;
+  }
+  return serveVariant(req, res, next, variantId, null);
+});
+
+// Direct landing page URL — e.g. /fb-ads, /youtube, /test2
+// Serves the variant associated with a tracking link directly (no redirect)
+const RESERVED = new Set(['admin','superadmin','api','r','confirmed','favicon.ico']);
+router.get('/:slug', async (req, res, next) => {
+  const { slug } = req.params;
+  if (RESERVED.has(slug.toLowerCase())) return next();
+
+  const { data: link } = await supabase.from('tracking_links').select('*').eq('slug', slug).single();
+  if (!link) return next();
+
+  // Set tracking cookie
+  res.cookie('mfc_ref', slug, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+
+  // Determine variant from link mode
+  const linkMode = link.link_mode || 'global';
+  let variantId = null;
+  if (linkMode === 'own' && link.rot_sequence?.length > 0) {
+    variantId = await runLinkRotation(link);
+  } else if (linkMode === 'forced' && link.forced_variant_id) {
+    variantId = link.forced_variant_id;
+  }
+
+  if (variantId) {
+    res.cookie('mfc_forced_variant', String(variantId), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+  } else {
+    res.clearCookie('mfc_forced_variant');
+  }
+
+  return serveVariant(req, res, next, variantId, slug);
 });
 
 module.exports = router;

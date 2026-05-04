@@ -11,6 +11,7 @@ const BLOCK_TYPES = [
   { type: 'calendar_add',  label: '📅 Add to Calendar' },
   { type: 'html',          label: '💻 Custom HTML' },
   { type: 'how_it_works',  label: '📋 How It Works' },
+  { type: 'creator_scroll', label: '🎬 Creator Scroll' },
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
 
@@ -28,6 +29,7 @@ function renderBlock(block, testimonialData = []) {
     case 'calendar_add': return renderCalendarAdd(block);
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
     case 'how_it_works': return renderHowItWorks(block);
+    case 'creator_scroll': return renderCreatorScroll(block);
     default: return ''
   }
 }
@@ -315,14 +317,17 @@ function renderHowItWorks(b) {
   const steps = b.steps || [];
 
   const cards = steps.map((step, idx) => {
-    const bg = step.image
-      ? `<img src="${step.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.7" alt="">`
-      : '';
-    const cardBg = step.image ? '' : 'background:linear-gradient(135deg,#1a1a2e,#0d0d14);';
+    let mediaBg = '';
+    if (step.media_type === 'video' && step.video) {
+      mediaBg = `<video src="${step.video}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.85"></video>`;
+    } else if (step.image) {
+      mediaBg = `<img src="${step.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.85" alt="">`;
+    }
+    const cardBg = (step.image || (step.media_type === 'video' && step.video)) ? '' : 'background:linear-gradient(135deg,#1a1a2e,#0d0d14);';
     const btnColor = step.color || '#ff3366';
     return `
     <div style="position:relative;border-radius:20px;overflow:hidden;min-height:380px;${cardBg}">
-      ${bg}
+      ${mediaBg}
       <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.95) 0%,rgba(0,0,0,0.3) 50%,transparent 100%)"></div>
       <div style="position:absolute;bottom:0;left:0;right:0;padding:24px">
         <div style="font-size:clamp(20px,2.5vw,26px);font-weight:900;color:white;text-transform:uppercase;line-height:1.1;margin-bottom:8px;padding-right:52px">${step.title || 'Step ' + (idx+1)}</div>
@@ -339,6 +344,47 @@ function renderHowItWorks(b) {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
         ${cards}
       </div>
+    </div>
+  </section>`;
+}
+
+function renderCreatorScroll(b) {
+  const title = b.title || '';
+  const subtitle = b.subtitle || '';
+  const items = b.items || [];
+
+  const cards = items.map(item => {
+    const engagement = item.engagement || '';
+    const icon = item.engagement_type === 'views' ? '▶' : '♥';
+    const iconColor = item.engagement_type === 'views' ? '#fff' : '#ff3366';
+
+    let media = '';
+    if (item.media_type === 'video' && item.video) {
+      media = `<video src="${item.video}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;
+    } else if (item.image) {
+      media = `<img src="${item.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" alt="">`;
+    }
+
+    return `
+    <div style="flex:0 0 200px;position:relative;border-radius:16px;overflow:hidden;aspect-ratio:9/16;background:#111;snap-align:start">
+      ${media}
+      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.6) 0%,transparent 40%)"></div>
+      ${engagement ? `
+      <div style="position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:5px">
+        <span style="color:${iconColor};font-size:14px">${icon}</span>
+        <span style="color:white;font-size:13px;font-weight:700">${engagement}</span>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `
+  <section style="padding:60px 0;background:#080810;overflow:hidden">
+    ${title || subtitle ? `<div style="padding:0 20px;margin-bottom:32px;text-align:center">
+      ${title ? `<h2 style="font-size:clamp(24px,4vw,40px);font-weight:900;color:white;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${title}</h2>` : ''}
+      ${subtitle ? `<p style="color:rgba(255,255,255,0.6);font-size:16px">${subtitle}</p>` : ''}
+    </div>` : ''}
+    <div style="display:flex;gap:16px;overflow-x:auto;padding:0 20px 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none">
+      ${cards}
     </div>
   </section>`;
 }

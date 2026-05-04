@@ -15,11 +15,18 @@
       cta_banner: { type:'cta_banner', headline:'Ready to Start?', subheadline:'Join thousands already earning with AI creators.', cta_text:'Claim Your Spot →', bg_color:'linear-gradient(135deg,#7c3aed,#06b6d4)', text_color:'white', cta_destination:'signup', cta_link:'' },
       html: { type:'html', content:'<p style="color:#e2e8f0;text-align:center;padding:40px">Your custom HTML here</p>' },
       how_it_works: { type:'how_it_works', title:'HOW IT WORKS', steps:[
-        { title:'Choose your 100% Free AI Creator', description:'Pick from our library of AI creators — no upfront cost, no technical skills required.', image:'', color:'#ff3366' },
-        { title:'Watch Our Free Education', description:'Access our complete training library to learn how to grow and monetize your AI creator.', image:'', color:'#7c3aed' },
-        { title:'Generate Unlimited Content on our Apex AI Generator', description:'Create professional photos and videos for TikTok, Reels, and more with one click.', image:'', color:'#06b6d4' },
-        { title:'Go Viral', description:'Your AI creator stays 100% consistent across every post, building a real audience fast.', image:'', color:'#ff3366' },
-        { title:'Get Paid', description:'Earn through fan subscriptions, brand deals, and automated revenue streams — you keep 60%.', image:'', color:'#22c55e' }
+        { title:'Choose your 100% Free AI Creator', description:'Pick from our library of AI creators — no upfront cost, no technical skills required.', media_type:'image', image:'', video:'', color:'#ff3366' },
+        { title:'Watch Our Free Education', description:'Access our complete training library to learn how to grow and monetize your AI creator.', media_type:'image', image:'', video:'', color:'#7c3aed' },
+        { title:'Generate Unlimited Content on our Apex AI Generator', description:'Create professional photos and videos for TikTok, Reels, and more with one click.', media_type:'image', image:'', video:'', color:'#06b6d4' },
+        { title:'Go Viral', description:'Your AI creator stays 100% consistent across every post, building a real audience fast.', media_type:'image', image:'', video:'', color:'#ff3366' },
+        { title:'Get Paid', description:'Earn through fan subscriptions, brand deals, and automated revenue streams — you keep 60%.', media_type:'image', image:'', video:'', color:'#22c55e' }
+      ]},
+      creator_scroll: { type:'creator_scroll', title:'Meet Your AI Creators', subtitle:'Choose the creator you want to manage', items:[
+        { media_type:'image', image:'', video:'', engagement:'2.1M', engagement_type:'likes' },
+        { media_type:'image', image:'', video:'', engagement:'780K', engagement_type:'likes' },
+        { media_type:'image', image:'', video:'', engagement:'1.2M', engagement_type:'likes' },
+        { media_type:'image', image:'', video:'', engagement:'5.8K', engagement_type:'views' },
+        { media_type:'image', image:'', video:'', engagement:'340K', engagement_type:'likes' },
       ]},
     };
 
@@ -87,6 +94,7 @@
         case 'cta_banner': return f('headline','Headline') + f('subheadline','Subheadline') + f('cta_text','Button Text') + ctaDest(b, i) + f('bg_color','Background','text','placeholder="linear-gradient(135deg,#7c3aed,#06b6d4)"') + f('text_color','Text Color','text','placeholder="white"');
         case 'html': return `<div class="field"><label>Custom HTML</label><textarea rows="8" onchange="updateField(${i},'content',this.value)">${esc(b.content||'')}</textarea></div>`;
         case 'how_it_works': return renderHowItWorksForm(b, i);
+        case 'creator_scroll': return renderCreatorScrollForm(b, i);
         default: return '<p style="color:#64748b;font-size:13px">No options for this block type.</p>';
       }
     }
@@ -230,11 +238,17 @@
     function renderHowItWorksForm(b, i) {
       var steps = b.steps || [];
       var rows = steps.map(function(step, j) {
+        var isVideo = step.media_type === 'video';
         return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
           + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">STEP ' + (j+1) + ' <button onclick="removeHowItWorksStep(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
           + '<div class="field"><label>Title</label><input type="text" value="' + esc(step.title||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'title\',this.value)"></div>'
           + '<div class="field"><label>Description</label><textarea rows="2" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'description\',this.value)">' + esc(step.description||'') + '</textarea></div>'
-          + '<div class="field"><label>Background Image URL (optional)</label><input type="text" value="' + esc(step.image||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>'
+          + '<div class="field"><label>Media Type</label><select onchange="updateHowItWorksStep(' + i + ',' + j + ',\'media_type\',this.value);render()">'
+          + '<option value="image"' + (!isVideo ? ' selected' : '') + '>Photo</option>'
+          + '<option value="video"' + (isVideo ? ' selected' : '') + '>Video</option>'
+          + '</select></div>'
+          + (!isVideo ? '<div class="field"><label>Background Image URL (optional)</label><input type="text" value="' + esc(step.image||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>' : '')
+          + (isVideo ? '<div class="field"><label>Video URL</label><input type="text" value="' + esc(step.video||'') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://..."></div>' : '')
           + '<div class="field"><label>Arrow Button Color</label><input type="text" value="' + esc(step.color||'#ff3366') + '" onchange="updateHowItWorksStep(' + i + ',' + j + ',\'color\',this.value)" placeholder="#ff3366"></div>'
           + '</div>';
       }).join('');
@@ -258,6 +272,48 @@
     function removeHowItWorksStep(blockIdx, stepIdx) {
       if (!blocks[blockIdx].steps) return;
       blocks[blockIdx].steps.splice(stepIdx, 1);
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+
+    function renderCreatorScrollForm(b, i) {
+      var items = b.items || [];
+      var rows = items.map(function(item, j) {
+        var isVideo = item.media_type === 'video';
+        return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
+          + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">CREATOR ' + (j+1) + ' <button onclick="removeCreatorItem(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
+          + '<div class="field"><label>Media Type</label><select onchange="updateCreatorItem(' + i + ',' + j + ',\'media_type\',this.value);render()">'
+          + '<option value="image"' + (!isVideo ? ' selected' : '') + '>Photo</option>'
+          + '<option value="video"' + (isVideo ? ' selected' : '') + '>Video</option>'
+          + '</select></div>'
+          + (!isVideo ? '<div class="field"><label>Photo URL</label><input type="text" value="' + esc(item.image||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://..."></div>' : '')
+          + (isVideo ? '<div class="field"><label>Video URL</label><input type="text" value="' + esc(item.video||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://..."></div>' : '')
+          + '<div class="field"><label>Engagement Count (e.g. 2.1M)</label><input type="text" value="' + esc(item.engagement||'') + '" onchange="updateCreatorItem(' + i + ',' + j + ',\'engagement\',this.value)" placeholder="2.1M"></div>'
+          + '<div class="field"><label>Engagement Type</label><select onchange="updateCreatorItem(' + i + ',' + j + ',\'engagement_type\',this.value)">'
+          + '<option value="likes"' + (item.engagement_type!=='views' ? ' selected' : '') + '>❤️ Likes</option>'
+          + '<option value="views"' + (item.engagement_type==='views' ? ' selected' : '') + '>▶ Views</option>'
+          + '</select></div>'
+          + '</div>';
+      }).join('');
+      const f = (key, label) => `<div class="field"><label>${label}</label><input type="text" value="${esc(b[key]||'')}" onchange="updateField(${i},'${key}',this.value)"></div>`;
+      return f('title','Section Title') + f('subtitle','Subtitle (optional)')
+        + '<div style="margin-top:12px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Creators</div>'
+        + rows
+        + '<button onclick="addCreatorItem(' + i + ')" class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px">+ Add Creator</button></div>';
+    }
+
+    function updateCreatorItem(blockIdx, itemIdx, key, val) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      blocks[blockIdx].items[itemIdx][key] = val;
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function addCreatorItem(blockIdx) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      blocks[blockIdx].items.push({ media_type:'image', image:'', video:'', engagement:'', engagement_type:'likes' });
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+    function removeCreatorItem(blockIdx, itemIdx) {
+      if (!blocks[blockIdx].items) return;
+      blocks[blockIdx].items.splice(itemIdx, 1);
       dirty = true; markUnsaved(); render(); debouncePreview();
     }
 

@@ -682,7 +682,9 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     var current = 0;
     var timer;
     function cardWidth() {
-      return cards[0] ? cards[0].offsetWidth + 20 : 0;
+      if (!cards[0]) return 0;
+      var gap = parseFloat(window.getComputedStyle(track).gap) || 0;
+      return cards[0].offsetWidth + gap;
     }
     function goTo(idx, animate) {
       if (animate === false) track.style.transition = 'none';

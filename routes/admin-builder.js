@@ -89,7 +89,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
         <!-- Add block section -->
         <div style="margin-top:20px">
           <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Add a block</div>
-          <div class="add-block-grid" id="block-type-buttons"></div>
+          <div class="add-block-grid" id="block-type-buttons">${BLOCK_TYPES.map(t => `<button class="add-block-btn" onclick="addBlock('${t.type}')">${t.label}</button>`).join('')}</div>
         </div>
 
         <!-- VSL Panel -->
@@ -99,6 +99,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
             <label>From library</label>
             <select id="vsl-library-select">
               <option value="">None</option>
+              ${(vslLibrary||[]).map(vsl => `<option value="${vsl.id}" ${String(currentVslId) === String(vsl.id) ? 'selected' : ''}>${vsl.name} (${vsl.type})</option>`).join('')}
             </select>
           </div>
           <div class="field">
@@ -408,14 +409,9 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
     }
 
     function init() {
-      // Render block type buttons
-      const grid = document.getElementById('block-type-buttons');
-      grid.innerHTML = BLOCK_TYPES.map(t => \`<button class="add-block-btn" onclick="addBlock('\${t.type}')">\${t.label}</button>\`).join('');
       // Open first block by default if blocks exist
       if (blocks.length > 0) openBlocks.add(0);
       render();
-      // Load VSL library panel
-      loadVslLibrary();
       // Pre-fill URL input if variant has a vsl_url
       const variantVslUrl = ${JSON.stringify(v.vsl_url || '')};
       if (variantVslUrl) document.getElementById('vsl-url-input').value = variantVslUrl;

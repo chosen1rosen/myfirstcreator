@@ -90,7 +90,7 @@ function renderTestimonials(b, testimonialData) {
   const makeCard = t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+      return `<div class="testimonial-card tg-card"><div style="pointer-events:none;max-height:480px;overflow:hidden"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
@@ -276,8 +276,8 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
     .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid rgba(255,255,255,0.07);border-radius:24px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
-    .testimonial-card.tg-card{padding:4px;background:transparent;border:none;box-shadow:none;max-height:420px;overflow:hidden;border-radius:16px}
-    @media(max-width:768px){.testimonial-card{flex:0 0 calc(47% - 6px)}.testimonial-card.tg-card{max-height:300px}}
+    .testimonial-card.tg-card{padding:0;background:transparent;border:none;box-shadow:none;overflow:hidden;border-radius:20px}
+    @media(max-width:768px){.testimonial-card{flex:0 0 85%}.testimonial-card.tg-card{max-height:480px;height:480px;overflow:hidden}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

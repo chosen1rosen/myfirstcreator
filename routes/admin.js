@@ -572,7 +572,7 @@ router.get('/tracking', requireAuth, async (req, res) => {
       <form method="POST" action="/admin/tracking" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
         <div class="form-group" style="margin:0"><label>Slug *</label><input type="text" name="slug" required placeholder="instagram" pattern="[a-z0-9-_]+"></div>
         <div class="form-group" style="margin:0"><label>Label</label><input type="text" name="name" placeholder="Instagram Bio"></div>
-        <div class="form-group" style="margin:0"><label>Destination</label><input type="text" name="destination" value="/"></div>
+        <div class="form-group" style="margin:0"><label>Destination <span style="font-weight:normal;color:#64748b;font-size:11px">(URL path, e.g. /)</span></label><input type="text" name="destination" value="/" placeholder="/"></div>
         <div style="margin-bottom:0"><button type="submit" class="btn btn-primary" style="width:100%">Create</button></div>
       </form>
     </div>
@@ -590,7 +590,9 @@ router.post('/tracking', requireAuth, async (req, res) => {
   if (!clean) return res.redirect('/admin/tracking');
   const { data: existing } = await supabase.from('tracking_links').select('id').eq('slug', clean).single();
   if (existing) return res.redirect('/admin/tracking?msg=exists');
-  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/', link_mode: 'global' });
+  let dest = (destination || '/').trim();
+  if (dest && !dest.startsWith('/') && !dest.startsWith('http')) dest = '/' + dest;
+  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: dest, link_mode: 'global' });
   await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
 });

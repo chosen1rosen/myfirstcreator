@@ -417,7 +417,7 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
         });
         const data = await res.json();
         if (data.ok) {
-          dirty = false; markSaved();
+          dirty = false; document.getElementById('save-status').innerHTML = '\u2705 Saved';
           statusEl.textContent = '\u2705 VSL saved';
           render();
           refreshPreview();

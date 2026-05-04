@@ -78,15 +78,16 @@ function renderVSL(b) {
 
 function renderEmailCapture(b) {
   const bg = b.bg_color || 'transparent';
-  const isLink = b.cta_destination === 'link' && b.cta_link;
+  const isLink = b.cta_destination === 'link';
+  const linkHref = b.cta_link || '#signup';
   return `
   <section class="block-email" id="signup" style="padding:72px 20px;background:${bg};text-align:center">
     <div class="signup-box">
       ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
       ${b.title ? `<h2>${b.title}</h2>` : ''}
-      ${b.subtitle ? `<p style="color:#64748b;margin:8px 0 24px;font-size:15px">${b.subtitle}</p>` : ''}
+      ${!isLink && b.subtitle ? `<p style="color:#64748b;margin:8px 0 24px;font-size:15px">${b.subtitle}</p>` : ''}
       ${isLink
-        ? `<a href="${b.cta_link}" target="_blank" class="btn-submit" style="display:block;text-decoration:none;text-align:center">${b.cta_text||'Get Instant Access →'}</a>`
+        ? `<a href="${linkHref}" ${b.cta_link ? 'target="_blank"' : ''} class="btn-submit" style="display:block;text-decoration:none;text-align:center">${b.cta_text||'Get Instant Access →'}</a>`
         : `<form id="signup-form">
         ${b.show_name !== false ? `<input type="text" id="sig-name" placeholder="${b.name_placeholder||'Your first name'}">` : ''}
         <input type="email" id="sig-email" placeholder="${b.email_placeholder||'Your email address'}" required>

@@ -207,7 +207,7 @@ router.post('/:id/builder/save', requireAuth, async (req, res) => {
 
 // ─── Preview (builder mode) ───────────────────────────────────────────────────
 
-router.get('/:id/preview-builder', requireAuth, async (req, res) => {
+router.get('/:id/preview-builder', async (req, res) => {
   const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
   if (!v) return res.status(404).send('Not found');
   const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(6);

@@ -417,3 +417,17 @@ body {
   .form-row { flex-direction: column; }
   .trust-row { gap: 12px; }
 }
+
+@media (max-width: 768px) {
+  .vsl-section {
+    padding: 32px 0;
+  }
+  .vsl-section .container {
+    padding: 0;
+  }
+  .vsl-wrapper {
+    border-radius: 0;
+    max-width: 100%;
+    box-shadow: none;
+  }
+}

@@ -579,10 +579,15 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     vslSrc = variant.vsl_url;
     vslIsFile = false;
   }
+  const vslEmbedSrc = vslSrc && !vslIsFile
+    ? vslSrc + (vslSrc.includes('?') ? '&' : '?') + 'enablejsapi=1&rel=0'
+    : vslSrc;
   const vslHTML = vslSrc
     ? vslIsFile
-      ? `<section class="vsl-section"><div class="container"><video src="${vslSrc}" controls style="width:100%;border-radius:16px;box-shadow:0 0 60px rgba(124,58,237,.2)"></video></div></section>`
-      : `<section class="vsl-section"><div class="container"><div class="vsl-wrap"><iframe src="${vslSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div></div></section>`
+      ? `<section class="vsl-section"><div class="container"><div class="vsl-wrap"><video id="vsl-video" src="${vslSrc}" controls preload="metadata"></video></div></div></section>
+<script>(function(){var v=document.getElementById('vsl-video');if(!v)return;v.addEventListener('loadedmetadata',function(){v.currentTime=0.001;});setTimeout(function(){v.muted=false;v.volume=1;v.play().catch(function(){});},2000);})();<\/script>`
+      : `<section class="vsl-section"><div class="container"><div class="vsl-wrap"><iframe id="vsl-iframe" src="${vslEmbedSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div></div></section>
+<script>setTimeout(function(){var f=document.getElementById('vsl-iframe');if(!f)return;try{f.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}','*');f.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}','*');f.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}','*');}catch(e){}},2000);<\/script>`
     : '';
 
   return `<!DOCTYPE html>
@@ -605,7 +610,8 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .trust-row{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:24px;font-size:14px;color:#64748b}
     .vsl-section{padding:48px 0;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30}
     .vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}
-    .vsl-wrap iframe{position:absolute;top:0;left:0;width:100%;height:100%}
+    .vsl-wrap iframe,.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
+    @media(max-width:768px){.vsl-section .container{padding:0}.vsl-wrap{border-radius:0;box-shadow:none}}
     .signup-section{padding:72px 20px;text-align:center}
     .signup-box{background:#12121f;border:1px solid #1e1e30;border-radius:20px;padding:48px 32px;max-width:480px;margin:0 auto}
     .signup-box h2{font-size:28px;font-weight:700;margin-bottom:8px}

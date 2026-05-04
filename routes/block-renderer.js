@@ -51,15 +51,29 @@ function renderHero(b) {
 
 function renderVSL(b) {
   if (!b.vsl_file && !b.vsl_url) return '';
+  const isFile = !!b.vsl_file;
   const src = b.vsl_file || b.vsl_url;
-  const content = `<video src="${src}" controls style="width:100%;border-radius:16px;box-shadow:0 0 40px rgba(124,58,237,.2)"></video>`;
+  const uid = 'vsl_' + Math.random().toString(36).slice(2, 8);
+
+  let mediaHTML, scriptHTML;
+  if (isFile) {
+    mediaHTML = `<div class="vsl-wrap"><video id="${uid}" src="${src}" controls preload="metadata"></video></div>`;
+    scriptHTML = `<script>(function(){var v=document.getElementById('${uid}');if(!v)return;v.addEventListener('loadedmetadata',function(){v.currentTime=0.001;});setTimeout(function(){v.muted=false;v.volume=1;v.play().catch(function(){});},2000);})();<\/script>`;
+  } else {
+    const embedSrc = src + (src.includes('?') ? '&' : '?') + 'enablejsapi=1&rel=0';
+    mediaHTML = `<div class="vsl-wrap"><iframe id="${uid}" src="${embedSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`;
+    scriptHTML = `<script>setTimeout(function(){var f=document.getElementById('${uid}');if(!f)return;try{f.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}','*');f.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}','*');f.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}','*');}catch(e){}},2000);<\/script>`;
+  }
+
   return `
-  <section class="block-vsl" style="padding:48px 20px;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
-    <div class="container">
+  <section class="block-vsl" style="padding:48px 0;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
+    <style>.vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}.vsl-wrap iframe,.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%;border:none}@media(max-width:768px){.block-vsl{padding:0}.vsl-wrap{border-radius:0;box-shadow:none}}</style>
+    <div class="container" style="padding:0 20px">
       ${b.caption ? `<p style="text-align:center;color:#94a3b8;margin-bottom:20px;font-size:15px">${b.caption}</p>` : ''}
-      ${content}
+      ${mediaHTML}
     </div>
-  </section>`;
+  </section>
+  ${scriptHTML}`;
 }
 
 function renderEmailCapture(b) {

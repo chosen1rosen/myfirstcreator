@@ -41,17 +41,45 @@ async function loadVSL() {
 
     if (data.type === 'url' && data.url) {
       let src = data.url;
-      // Convert youtube watch URLs to embed
       src = src.replace('youtube.com/watch?v=', 'youtube.com/embed/');
       src = src.replace('youtu.be/', 'youtube.com/embed/');
-      // Add autoplay=0, rel=0 params if youtube/vimeo
-      wrapper.innerHTML = `<iframe src="${src}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      // Add enablejsapi so we can control playback via postMessage
+      src += (src.includes('?') ? '&' : '?') + 'enablejsapi=1&rel=0';
+      const iframe = document.createElement('iframe');
+      iframe.id = 'vsl-iframe';
+      iframe.src = src;
+      iframe.frameBorder = '0';
+      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      iframe.allowFullscreen = true;
+      wrapper.appendChild(iframe);
       section.style.display = '';
+      // Auto-play with volume after 2 seconds
+      setTimeout(function () {
+        try {
+          iframe.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+          iframe.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}', '*');
+          iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        } catch (e) {}
+      }, 2000);
     } else if (data.type === 'file' && data.file) {
-      wrapper.innerHTML = `<video src="${data.file}" controls preload="metadata"></video>`;
+      const video = document.createElement('video');
+      video.id = 'vsl-video';
+      video.src = data.file;
+      video.controls = true;
+      video.preload = 'metadata';
+      // Seek to first frame so thumbnail shows instead of black
+      video.addEventListener('loadedmetadata', function () {
+        video.currentTime = 0.001;
+      });
+      wrapper.appendChild(video);
       section.style.display = '';
+      // Auto-play with volume after 2 seconds
+      setTimeout(function () {
+        video.muted = false;
+        video.volume = 1;
+        video.play().catch(function () {});
+      }, 2000);
     }
-    // else: hide section (default)
   } catch (e) {}
 }
 

@@ -243,12 +243,44 @@ router.post('/:id/edit', requireAuth, async (req, res) => {
 router.post('/:id/activate', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const id = parseInt(req.params.id);
+  // Always set mode to manual and ensure this variant is in the sequence
+  // so the public rotation engine always has a valid state to serve from.
+  const existingSeqRaw = await getSetting(rotKey(adminId, 'sequence'));
+  let sequence = existingSeqRaw ? JSON.parse(existingSeqRaw) : [];
+  if (!sequence.includes(id)) sequence = [id, ...sequence];
   await Promise.all([
     setSetting(rotKey(adminId, 'active_id'), String(id)),
+    setSetting(rotKey(adminId, 'mode'), 'manual'),
+    setSetting(rotKey(adminId, 'sequence'), JSON.stringify(sequence)),
     setSetting(rotKey(adminId, 'click_count'), '0'),
     setSetting(rotKey(adminId, 'started_at'), new Date().toISOString()),
   ]);
   res.redirect('/admin/variants');
+});
+
+// Rotation debug — shows live DB state for rotation keys
+router.get('/rot-debug', requireAuth, async (req, res) => {
+  const adminId = req.session.adminId || 'steven';
+  const keys = ['mode','sequence','active_id','click_count','started_at','click_threshold','time_hours'].map(s => rotKey(adminId, s));
+  const { data } = await supabase.from('settings').select('key, value').in('key', keys);
+  const map = {};
+  (data || []).forEach(r => { map[r.key] = r.value; });
+  const { data: variants } = await supabase.from('variants').select('id, name, owner').order('id');
+  res.send(layout('Rotation Debug', `
+    <div class="card">
+      <div class="card-title">Live DB Rotation State (adminId: ${adminId})</div>
+      <table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>
+        ${keys.map(k => `<tr><td><code>${k}</code></td><td><code>${map[k] ?? '<null>'}</code></td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-title">All Variants</div>
+      <table><thead><tr><th>ID</th><th>Name</th><th>Owner</th></tr></thead><tbody>
+        ${(variants||[]).map(v => `<tr><td>${v.id}</td><td>${v.name}</td><td>${v.owner}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <a href="/admin/variants" class="btn btn-ghost" style="margin-top:16px;display:inline-block">← Back</a>
+  `, 'variants'));
 });
 
 // Delete variant

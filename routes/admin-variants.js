@@ -554,7 +554,8 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const testimonialCards = testimonials.map(t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+      const embedUrl = `https://t.me/${tgPath}?embed=1&mode=tme`;
+      return `<div class="testimonial-card tg-card"><iframe src="${embedUrl}" frameborder="0" scrolling="no" style="width:100%;height:420px;border:none;display:block;"></iframe></div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
@@ -619,11 +620,8 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     .carousel-viewport{overflow:hidden}
     .carousel-track{display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start}
     .testimonial-card{flex:0 0 ${cardWidthCalc};background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
-    .testimonial-card.tg-card{padding:0;background:transparent;border:none;position:relative;min-height:300px;display:block}
-    .testimonial-card.tg-card iframe,.testimonial-card.tg-card>div{width:100%!important;max-width:100%!important;box-sizing:border-box}
-    .testimonial-card.tg-card::before{content:'';position:absolute;top:0;left:0;right:0;min-height:300px;height:100%;background:linear-gradient(90deg,#12121f 25%,#1a1a2e 50%,#12121f 75%);background-size:200% 100%;animation:tg-shimmer 1.5s infinite;border-radius:12px;opacity:1;transition:opacity 0.3s;z-index:1;pointer-events:none}
-    .testimonial-card.tg-card.tg-loaded::before{opacity:0}
-    @keyframes tg-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .testimonial-card.tg-card{padding:0;background:transparent;border:none;line-height:0}
+    .testimonial-card.tg-card iframe{display:block;width:100%;height:420px;border:none}
     @media(max-width:768px){
       .testimonials-section{padding:40px 0}
       .testimonials-section .container{padding:0!important;max-width:100%!important}
@@ -709,24 +707,11 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
     function advance() { current++; goTo(current, true); }
     function startTimer() { timer = setInterval(advance, 3500); }
     function stopTimer() { clearInterval(timer); }
-    // Mark tg-cards as loaded once their iframe appears
-    function watchTgCards() {
-      var tgCards = track.querySelectorAll('.tg-card');
-      tgCards.forEach(function(card) {
-        if (card.querySelector('iframe')) { card.classList.add('tg-loaded'); return; }
-        var mo = new MutationObserver(function() {
-          if (card.querySelector('iframe')) { card.classList.add('tg-loaded'); mo.disconnect(); }
-        });
-        mo.observe(card, { childList: true, subtree: true });
-      });
-    }
-    // Init carousel once layout is ready
     function initCarousel() {
       var cw = cardWidth();
       if (cw === 0) { requestAnimationFrame(initCarousel); return; }
       goTo(0, false);
       startTimer();
-      watchTgCards();
     }
     wrap.addEventListener('mouseenter', stopTimer);
     wrap.addEventListener('mouseleave', startTimer);

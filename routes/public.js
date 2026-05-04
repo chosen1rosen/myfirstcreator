@@ -101,7 +101,9 @@ router.get('/r/:slug', async (req, res) => {
   // else: global mode — variantId stays null
 
   if (variantId !== null) {
-    res.cookie('mfc_forced_variant', String(variantId), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+    // Session cookie (no maxAge) — clears when browser closes so the global
+    // rotation always takes over on the next fresh visit.
+    res.cookie('mfc_forced_variant', String(variantId), { httpOnly: true });
   } else {
     // Clear any previously forced variant so normal rotation applies
     res.clearCookie('mfc_forced_variant');
@@ -368,7 +370,8 @@ router.get('/:slug', async (req, res, next) => {
   }
 
   if (variantId) {
-    res.cookie('mfc_forced_variant', String(variantId), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+    // Session cookie — clears when browser closes
+    res.cookie('mfc_forced_variant', String(variantId), { httpOnly: true });
   } else {
     res.clearCookie('mfc_forced_variant');
   }

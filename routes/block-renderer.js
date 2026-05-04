@@ -111,12 +111,12 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
         ${b.label ? `<div class="section-label">${b.label}</div>` : ''}
         ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700">${b.title}</h2>` : ''}
       </div>
-      <div class="testimonials-carousel-wrap" id="wrap-${blockId}" style="position:relative;overflow:hidden;padding:0 40px">
-        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8249;</button>
-        <div style="overflow:hidden">
+      <div class="testimonials-carousel-wrap" id="wrap-${blockId}">
+        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)">&#8249;</button>
+        <div class="carousel-viewport">
           <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:12px;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);align-items:flex-start">${carouselCards}</div>
         </div>
-        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8250;</button>
+        <button class="car-btn car-next" onclick="carMove_${blockId}(1)">&#8250;</button>
       </div>
     </div>
   </section>
@@ -129,7 +129,11 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
     var total = ${items.length};
     var current = 0;
     var timer;
-    function cardWidth() { return allCards[0] ? allCards[0].offsetWidth + 20 : 0; }
+    function cardWidth() {
+      if (!allCards[0]) return 0;
+      var gap = parseFloat(window.getComputedStyle(track).gap) || 0;
+      return allCards[0].getBoundingClientRect().width + gap;
+    }
     function goTo(idx, animate) {
       track.style.transition = animate === false ? 'none' : 'transform 0.5s ease';
       track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
@@ -275,10 +279,13 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
+    .testimonials-carousel-wrap{position:relative;padding:0 44px}
+    .carousel-viewport{overflow:hidden;width:100%}
+    .car-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+    .car-prev{left:0}.car-next{right:0}
     .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
     .testimonial-card.tg-card{padding:8px;background:transparent;border:none}
-    @media(max-width:768px){.testimonial-card{flex:0 0 100vw}.testimonials-carousel-wrap{padding:0;width:100vw;position:relative;left:50%;transform:translateX(-50%)}.car-btn{display:none}.carousel-track{gap:0}} @media(max-width:480px) and (orientation:portrait){.testimonial-card.tg-card{zoom:0.75;width:133.33vw;max-width:133.33vw}}
-    @media(max-width:768px){.testimonial-card{flex:0 0 88%}}
+    @media(max-width:768px){.testimonials-carousel-wrap{padding:0}.testimonial-card{flex:0 0 100%}.car-btn{display:none}.carousel-track{gap:0}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

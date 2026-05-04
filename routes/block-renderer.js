@@ -90,7 +90,20 @@ function renderTestimonials(b, testimonialData) {
   const makeCard = t => {
     if (t.type === 'telegram' && t.telegram_url) {
       const tgPath = t.telegram_url.replace(/^https?:\/\/t\.me\//, '').replace(/^\//, '');
-      return `<div class="testimonial-card tg-card"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>`;
+      const channel = tgPath.split('/')[0] || 'vouch';
+      return `<div class="testimonial-card tg-card">
+        <div class="tg-mobile-preview">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2196F3,#0d47a1);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">✈</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#fff">${t.name || channel}</div>
+              <div style="font-size:10px;color:#64b5f6">@${channel}</div>
+            </div>
+          </div>
+          <a href="${t.telegram_url}" target="_blank" style="display:block;text-align:center;background:linear-gradient(135deg,#2196F3,#1565C0);color:white;text-decoration:none;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:600;margin-top:auto">👁 View Vouch</a>
+        </div>
+        <div class="tg-desktop-embed"><script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-post="${tgPath}" data-width="100%"><\/script></div>
+      </div>`;
     }
     return `<div class="testimonial-card">
       ${t.image_path ? `<img src="${t.image_path}" alt="${t.name}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:12px">` : ''}
@@ -277,6 +290,13 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
     .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
     .testimonial-card.tg-card{padding:0;background:transparent;border:none;border-radius:20px;overflow:hidden;min-height:200px}
+    .tg-mobile-preview{display:none}
+    .tg-desktop-embed{display:block}
+    @media(max-width:768px){
+      .testimonial-card.tg-card{background:#12121f;border:1px solid #1e1e30;padding:16px;min-height:160px;display:flex;flex-direction:column}
+      .tg-mobile-preview{display:flex;flex-direction:column;width:100%;height:100%}
+      .tg-desktop-embed{display:none}
+    }
     @media(max-width:768px){.testimonial-card{flex:0 0 88%}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}

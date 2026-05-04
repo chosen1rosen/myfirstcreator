@@ -39,7 +39,7 @@ function renderHero(b) {
       ${b.badge_text ? `<div class="badge-pill">${b.badge_text}</div><br>` : ''}
       <h1 class="hero-headline">${b.headline || 'Your Headline Here'}</h1>
       ${b.subheadline ? `<p class="hero-sub">${b.subheadline}</p>` : ''}
-      ${b.cta_text ? `<a href="#signup" class="btn-hero">${b.cta_text}</a>` : ''}
+      ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" class="btn-hero" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}
       ${trust.length ? `<div class="trust-row">${trust.map(t=>`<span>${t}</span>`).join('')}</div>` : ''}
     </div>
   </section>`;
@@ -171,7 +171,7 @@ function renderImageText(b) {
     ${b.label ? `<div class="section-label" style="margin-bottom:12px">${b.label}</div>` : ''}
     ${b.title ? `<h2 style="font-size:clamp(22px,3.5vw,36px);font-weight:700;margin-bottom:16px">${b.title}</h2>` : ''}
     ${b.body ? `<p style="color:#94a3b8;font-size:16px;line-height:1.7;margin-bottom:24px">${b.body}</p>` : ''}
-    ${b.cta_text ? `<a href="#signup" class="btn-hero" style="font-size:16px;padding:14px 28px">${b.cta_text}</a>` : ''}`;
+    ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" class="btn-hero" style="font-size:16px;padding:14px 28px" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}`;
   return `
   <section class="block-image-text" style="padding:72px 20px">
     <div class="container">
@@ -230,7 +230,7 @@ function renderCTABanner(b) {
     <div class="container">
       ${b.headline ? `<h2 style="font-size:clamp(28px,5vw,48px);font-weight:800;color:${b.text_color||'white'};margin-bottom:24px">${b.headline}</h2>` : ''}
       ${b.subheadline ? `<p style="color:${b.text_color||'rgba(255,255,255,0.8)'};font-size:18px;margin-bottom:32px">${b.subheadline}</p>` : ''}
-      ${b.cta_text ? `<a href="#signup" style="display:inline-block;padding:18px 48px;background:white;color:#7c3aed;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none">${b.cta_text}</a>` : ''}
+      ${b.cta_text ? `<a href="${b.cta_destination === 'link' && b.cta_link ? b.cta_link : '#signup'}" style="display:inline-block;padding:18px 48px;background:white;color:#7c3aed;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none" ${b.cta_destination === 'link' && b.cta_link ? 'target="_blank"' : ''}>${b.cta_text}</a>` : ''}
     </div>
   </section>`;
 }

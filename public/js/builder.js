@@ -11,8 +11,8 @@
       email_capture: { type:'email_capture', title:'Claim Your Free Spot', subtitle:'Enter your details to get instant access', cta_text:'Get Instant Access →', label:'🎟️ Free Training', show_name:true, name_placeholder:'Your first name', email_placeholder:'Your email address', bg_color:'transparent' },
       testimonials: { type:'testimonials', title:'Real Results From Real People', label:'💬 What They Say', layout:'grid', limit:6 },
       features: { type:'features', title:'Why This Works', subtitle:'', label:'⚡ The Platform', columns:3, items:[{icon:'🤖',title:'AI Creator Tech',description:'Built-in AI technology that runs 24/7'},{icon:'💰',title:'60% Revenue Share',description:'You keep the majority of everything earned'},{icon:'📈',title:'Built-in Audience',description:'Traffic and distribution already set up'}] },
-      image_text: { type:'image_text', title:'Your Title', body:'Your description text goes here.', cta_text:'', image_url:'', image_side:'left', label:'' },
-      cta_banner: { type:'cta_banner', headline:'Ready to Start?', subheadline:'Join thousands already earning with AI creators.', cta_text:'Claim Your Spot →', bg_color:'linear-gradient(135deg,#7c3aed,#06b6d4)', text_color:'white' },
+      image_text: { type:'image_text', title:'Your Title', body:'Your description text goes here.', cta_text:'', image_url:'', image_side:'left', label:'', cta_destination:'signup', cta_link:'' },
+      cta_banner: { type:'cta_banner', headline:'Ready to Start?', subheadline:'Join thousands already earning with AI creators.', cta_text:'Claim Your Spot →', bg_color:'linear-gradient(135deg,#7c3aed,#06b6d4)', text_color:'white', cta_destination:'signup', cta_link:'' },
       html: { type:'html', content:'<p style="color:#e2e8f0;text-align:center;padding:40px">Your custom HTML here</p>' },
     };
 
@@ -71,13 +71,13 @@
         </div>`;
 
       switch(b.type) {
-        case 'hero': return f('headline','Headline') + ta('subheadline','Subheadline') + f('cta_text','CTA Button Text') + f('badge_text','Badge Pill Text (optional)') + ta('trust_items','Trust Items (one per line)',3) + f('bg_color','Background Color','text','placeholder="transparent or #hex or CSS gradient"') + f('padding','Vertical Padding','text','placeholder="64px"');
+        case 'hero': return f('headline','Headline') + ta('subheadline','Subheadline') + f('cta_text','CTA Button Text') + ctaDest(b, i) + f('badge_text','Badge Pill Text (optional)') + ta('trust_items','Trust Items (one per line)',3) + f('bg_color','Background Color','text','placeholder="transparent or #hex or CSS gradient"') + f('padding','Vertical Padding','text','placeholder="64px"');
         case 'vsl': return renderVslBlockForm(b, i);
         case 'email_capture': return f('title','Title') + f('subtitle','Subtitle') + f('cta_text','Button Text') + f('label','Section Label (optional)') + chk('show_name','Show name field') + f('name_placeholder','Name Placeholder','text') + f('email_placeholder','Email Placeholder','text') + f('bg_color','Background Color','text','placeholder="transparent"');
         case 'testimonials': return f('title','Section Title') + f('label','Section Label') + sel('layout','Layout',[{v:'grid',l:'Grid'},{v:'list',l:'List'}]) + f('limit','Max Testimonials to Show','number');
         case 'features': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + sel('columns','Columns',[{v:2,l:'2 Columns'},{v:3,l:'3 Columns'},{v:4,l:'4 Columns'}]) + renderFeatureItems(b, i);
-        case 'image_text': return f('title','Title') + ta('body','Body Text') + f('cta_text','CTA Button (optional)') + f('image_url','Image URL') + sel('image_side','Image Position',[{v:'left',l:'Image Left'},{v:'right',l:'Image Right'}]) + f('label','Label (optional)');
-        case 'cta_banner': return f('headline','Headline') + f('subheadline','Subheadline') + f('cta_text','Button Text') + f('bg_color','Background','text','placeholder="linear-gradient(135deg,#7c3aed,#06b6d4)"') + f('text_color','Text Color','text','placeholder="white"');
+        case 'image_text': return f('title','Title') + ta('body','Body Text') + f('cta_text','CTA Button (optional)') + ctaDest(b, i) + f('image_url','Image URL') + sel('image_side','Image Position',[{v:'left',l:'Image Left'},{v:'right',l:'Image Right'}]) + f('label','Label (optional)');
+        case 'cta_banner': return f('headline','Headline') + f('subheadline','Subheadline') + f('cta_text','Button Text') + ctaDest(b, i) + f('bg_color','Background','text','placeholder="linear-gradient(135deg,#7c3aed,#06b6d4)"') + f('text_color','Text Color','text','placeholder="white"');
         case 'html': return `<div class="field"><label>Custom HTML</label><textarea rows="8" onchange="updateField(${i},'content',this.value)">${esc(b.content||'')}</textarea></div>`;
         default: return '<p style="color:#64748b;font-size:13px">No options for this block type.</p>';
       }
@@ -115,6 +115,29 @@
     }
 
     function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+    function ctaDest(b, i) {
+      var isLink = b.cta_destination === 'link';
+      var linkVal = b.cta_link || '';
+      return '<div class="field"><label>CTA Destination</label>'
+        + '<div style="display:flex;gap:16px;margin-bottom:8px">'
+        + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#94a3b8;margin:0">'
+        + '<input type="radio" name="cta_dest_' + i + '" value="signup" ' + (!isLink ? 'checked' : '') + ' onchange="updateField(' + i + ',\'cta_destination\',\'signup\');toggleCtaLink(' + i + ',false)" style="width:auto;margin:0"> Email signup form</label>'
+        + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#94a3b8;margin:0">'
+        + '<input type="radio" name="cta_dest_' + i + '" value="link" ' + (isLink ? 'checked' : '') + ' onchange="updateField(' + i + ',\'cta_destination\',\'link\');toggleCtaLink(' + i + ',true)" style="width:auto;margin:0"> Direct link (external URL)</label>'
+        + '</div>'
+        + '<input type="text" id="cta_link_' + i + '" value="' + esc(linkVal) + '" placeholder="https://addcal.co/your-webinar" '
+        + 'onchange="updateField(' + i + ',\'cta_link\',this.value)" '
+        + 'style="' + (isLink ? '' : 'display:none;') + '">'
+        + '</div>';
+    }
+
+    function toggleCtaLink(i, show) {
+      var el = document.getElementById('cta_link_' + i);
+      if (el) el.style.display = show ? '' : 'none';
+    }
+
+
 
 
     function updateVslBlock(i, vslId) {

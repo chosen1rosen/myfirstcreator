@@ -176,7 +176,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
 // Create variant
 router.post('/new', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items, cta_destination, cta_link } = req.body;
   // Determine VSL fields based on picker selection
   let resolvedVslType = 'none';
   let resolvedVslUrl = null;
@@ -189,7 +189,7 @@ router.post('/new', requireAuth, async (req, res) => {
     resolvedVslUrl = vsl_url;
   }
   const { data } = await supabase.from('variants').insert({
-    name, headline, subheadline, cta_text, badge_text,
+    name, headline, subheadline, cta_text, badge_text, cta_destination: cta_destination||'signup', cta_link: cta_link||null,
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     owner: adminId,
@@ -212,7 +212,7 @@ router.post('/new', requireAuth, async (req, res) => {
 
 // Update variant
 router.post('/:id/edit', requireAuth, async (req, res) => {
-  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
+  const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items, cta_destination, cta_link } = req.body;
   // Determine VSL fields based on picker selection
   let resolvedVslType = 'none';
   let resolvedVslUrl = null;
@@ -225,7 +225,7 @@ router.post('/:id/edit', requireAuth, async (req, res) => {
     resolvedVslUrl = vsl_url;
   }
   await supabase.from('variants').update({
-    name, headline, subheadline, cta_text, badge_text,
+    name, headline, subheadline, cta_text, badge_text, cta_destination: cta_destination||'signup', cta_link: cta_link||null,
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     updated_at: new Date().toISOString()
@@ -451,6 +451,20 @@ function variantForm(v = {}, vsls = []) {
           <input type="text" name="cta_text" value="${v.cta_text || ''}" placeholder="Claim Your Free Spot →">
         </div>
         <div class="form-group">
+          <label>CTA Button Destination</label>
+          <div style="display:flex;gap:20px;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;font-size:13px">
+              <input type="radio" name="cta_destination" value="signup" ${(!v.cta_destination || v.cta_destination==='signup') ? 'checked' : ''} onchange="document.getElementById('cta_link_wrap').style.display='none'" style="width:auto;margin:0"> Email signup form
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;font-size:13px">
+              <input type="radio" name="cta_destination" value="link" ${v.cta_destination==='link' ? 'checked' : ''} onchange="document.getElementById('cta_link_wrap').style.display=''" style="width:auto;margin:0"> Direct link
+            </label>
+          </div>
+          <div id="cta_link_wrap" style="${v.cta_destination==='link' ? '' : 'display:none'}">
+            <input type="text" name="cta_link" value="${v.cta_link || ''}" placeholder="https://addcal.co/your-webinar">
+          </div>
+        </div>
+        <div class="form-group">
           <label>Trust Items (one per line, shown below CTA)</label>
           <textarea name="trust_items" rows="4" placeholder="✅ 100% Free&#10;🔒 No Credit Card&#10;⚡ Instant Access">${v.trust_items || ''}</textarea>
         </div>
@@ -508,6 +522,8 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   const headline = variant.headline || 'Make Your First $1,000 With AI Creators';
   const subheadline = variant.subheadline || 'Join thousands building real income streams with AI creators + social media. Watch the free training and claim your spot.';
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
+  const ctaHref = variant.cta_destination === 'link' && variant.cta_link ? variant.cta_link : '#signup';
+  const ctaTarget = variant.cta_destination === 'link' && variant.cta_link ? ' target="_blank"' : '';
   const trustItems = (variant.trust_items || '✅ 100% Free\n🔒 No Credit Card\n⚡ Instant Access').split('\n').filter(Boolean);
 
   const perView = Math.min(testimonials.length, 3) || 1;
@@ -597,7 +613,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
       ${variant.badge_text ? `<div class="badge-pill">${variant.badge_text}</div><br>` : ''}
       <h1 class="hero-headline">${headline}</h1>
       <p class="hero-sub">${subheadline}</p>
-      <a href="#signup" class="btn-hero">${ctaText}</a>
+      <a href="${ctaHref}" class="btn-hero"${ctaTarget}>${ctaText}</a>
       <div class="trust-row">${trustItems.map(t => `<span>${t}</span>`).join('')}</div>
     </div>
   </section>
@@ -665,7 +681,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
   <section class="final-cta">
     <div class="container">
       <h2 style="font-size:clamp(28px,5vw,48px);font-weight:800;margin-bottom:20px">${headline}</h2>
-      <a href="#signup" class="btn-hero">${ctaText}</a>
+      <a href="${ctaHref}" class="btn-hero"${ctaTarget}>${ctaText}</a>
     </div>
   </section>
 

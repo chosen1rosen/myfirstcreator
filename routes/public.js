@@ -33,6 +33,49 @@ async function getSetting(key) {
   return data?.value ?? null;
 }
 
+// Per-link rotation engine
+async function runLinkRotation(link) {
+  const sequence = link.rot_sequence; // already parsed JSONB array by Supabase
+  if (!sequence || sequence.length === 0) return null;
+
+  const activeId = link.rot_active_id || sequence[0];
+  const clickCount = link.rot_click_count || 0;
+  const startedAt = link.rot_started_at ? new Date(link.rot_started_at) : new Date();
+
+  // Determine if we should rotate
+  let shouldRotate = false;
+  if (link.rot_mode === 'click') {
+    shouldRotate = clickCount >= (link.rot_click_threshold || 500);
+  } else if (link.rot_mode === 'time') {
+    const elapsedHours = (Date.now() - startedAt.getTime()) / (1000 * 60 * 60);
+    shouldRotate = elapsedHours >= (link.rot_time_hours || 168);
+  }
+
+  let newActiveId = activeId;
+  let newClickCount = clickCount + 1;
+  let newStartedAt = link.rot_started_at || startedAt.toISOString();
+
+  if (shouldRotate && sequence.length > 1) {
+    const currentIndex = sequence.indexOf(activeId);
+    const nextIndex = (currentIndex + 1) % sequence.length;
+    newActiveId = sequence[nextIndex];
+    newClickCount = 0;
+    newStartedAt = new Date().toISOString();
+  }
+
+  // Update the tracking_links row
+  const updateData = {
+    rot_active_id: newActiveId,
+    rot_click_count: newClickCount,
+  };
+  if (shouldRotate && sequence.length > 1) {
+    updateData.rot_started_at = newStartedAt;
+  }
+  await supabase.from('tracking_links').update(updateData).eq('id', link.id);
+
+  return activeId; // return the variant that was active before any rotation
+}
+
 // Tracking link redirect
 router.get('/r/:slug', async (req, res) => {
   const { slug } = req.params;
@@ -45,9 +88,20 @@ router.get('/r/:slug', async (req, res) => {
 
   res.cookie('mfc_ref', slug, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
 
-  // If this tracking link has a forced variant, pin it via cookie
-  if (link.forced_variant_id) {
-    res.cookie('mfc_forced_variant', String(link.forced_variant_id), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+  // Determine variant based on link_mode
+  const linkMode = link.link_mode || 'global';
+  let variantId = null;
+
+  if (linkMode === 'own' && link.rot_sequence && link.rot_sequence.length > 0) {
+    // Per-link rotation engine
+    variantId = await runLinkRotation(link);
+  } else if (linkMode === 'forced' && link.forced_variant_id) {
+    variantId = link.forced_variant_id;
+  }
+  // else: global mode — variantId stays null
+
+  if (variantId !== null) {
+    res.cookie('mfc_forced_variant', String(variantId), { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
   } else {
     // Clear any previously forced variant so normal rotation applies
     res.clearCookie('mfc_forced_variant');

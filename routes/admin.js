@@ -398,19 +398,22 @@ router.get('/tracking', requireAuth, async (req, res) => {
   const variantNames = {};
   (variants||[]).forEach(v => { variantNames[v.id] = v.name; });
 
-  const variantOptions = `<option value="">— Use rotation (default) —</option>` +
-    (variants||[]).map(v => `<option value="${v.id}">${v.name}</option>`).join('');
-
   const rows = (links||[]).map(l => {
     const visits = vMap[l.slug]||0, convs = sMap[l.slug]||0;
     const url = `https://${host}/r/${l.slug}`;
-    const forcedLabel = l.forced_variant_id && variantNames[l.forced_variant_id]
-      ? `<span class="badge badge-purple" style="font-size:11px">${variantNames[l.forced_variant_id]}</span>`
-      : `<span style="color:#475569;font-size:12px">rotation</span>`;
+    const linkMode = l.link_mode || 'global';
+    let modeLabel;
+    if (linkMode === 'forced' && l.forced_variant_id && variantNames[l.forced_variant_id]) {
+      modeLabel = `<span class="badge badge-purple" style="font-size:11px">${variantNames[l.forced_variant_id]}</span>`;
+    } else if (linkMode === 'own' && l.rot_sequence && l.rot_sequence.length > 0) {
+      modeLabel = `<span class="badge badge-blue" style="font-size:11px">own rotation (${l.rot_sequence.length} variants)</span>`;
+    } else {
+      modeLabel = `<span style="color:#475569;font-size:12px">global rotation</span>`;
+    }
     return `<tr>
       <td><span class="slug-preview">/r/${l.slug}</span></td>
       <td>${l.name||'—'}</td>
-      <td>${forcedLabel}</td>
+      <td>${modeLabel}</td>
       <td>${visits}</td><td>${convs}</td><td>${visits>0?((convs/visits)*100).toFixed(1)+'%':'—'}</td>
       <td style="font-size:12px;color:#64748b">${new Date(l.created_at).toLocaleDateString()}</td>
       <td>
@@ -422,6 +425,7 @@ router.get('/tracking', requireAuth, async (req, res) => {
   }).join('');
 
   res.send(layout('Tracking Links', `
+    <style>.badge-blue{background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}</style>
     ${msg==='added'?'<div class="alert alert-success">✅ Link created.</div>':''}
     ${msg==='exists'?'<div class="alert alert-error">⚠️ Slug already exists.</div>':''}
     ${msg==='deleted'?'<div class="alert alert-success">✅ Deleted.</div>':''}
@@ -432,7 +436,6 @@ router.get('/tracking', requireAuth, async (req, res) => {
         <div class="form-group" style="margin:0"><label>Slug *</label><input type="text" name="slug" required placeholder="instagram" pattern="[a-z0-9-_]+"></div>
         <div class="form-group" style="margin:0"><label>Label</label><input type="text" name="name" placeholder="Instagram Bio"></div>
         <div class="form-group" style="margin:0"><label>Destination</label><input type="text" name="destination" value="/"></div>
-        <div class="form-group" style="margin:0"><label>Force Variant</label><select name="forced_variant_id">${variantOptions}</select></div>
         <div style="margin-bottom:0"><button type="submit" class="btn btn-primary" style="width:100%">Create</button></div>
       </form>
     </div>
@@ -445,13 +448,12 @@ router.get('/tracking', requireAuth, async (req, res) => {
 
 router.post('/tracking', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const { slug, name, destination, forced_variant_id } = req.body;
+  const { slug, name, destination } = req.body;
   const clean = slug.toLowerCase().replace(/[^a-z0-9-_]/g, '');
   if (!clean) return res.redirect('/admin/tracking');
   const { data: existing } = await supabase.from('tracking_links').select('id').eq('slug', clean).single();
   if (existing) return res.redirect('/admin/tracking?msg=exists');
-  const forcedId = forced_variant_id ? parseInt(forced_variant_id) : null;
-  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/', forced_variant_id: forcedId || null });
+  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: destination||'/', link_mode: 'global' });
   await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
 });
@@ -466,37 +468,224 @@ router.get('/tracking/:id/edit', requireAuth, async (req, res) => {
   ]);
   if (!link) return res.redirect('/admin/tracking');
 
-  const variantOptions = `<option value="">— Use rotation (default) —</option>` +
-    (variants||[]).map(v => `<option value="${v.id}" ${String(v.id) === String(link.forced_variant_id) ? 'selected' : ''}>${v.name}</option>`).join('');
+  const linkMode = link.link_mode || 'global';
+  const rotSequence = Array.isArray(link.rot_sequence) ? link.rot_sequence : [];
+
+  // Build forced variant select options
+  const forcedOptions = (variants||[]).map(v =>
+    `<option value="${v.id}" ${String(v.id) === String(link.forced_variant_id) ? 'selected' : ''}>${v.name}</option>`
+  ).join('');
+
+  // Build own-rotation variant checkboxes with ordering
+  const ownVariantCheckboxes = (variants||[]).map(v => {
+    const inSeq = rotSequence.includes(v.id);
+    const seqPos = rotSequence.indexOf(v.id);
+    return `<div class="own-variant-row" data-id="${v.id}" data-pos="${inSeq ? seqPos : 999}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0a0a14;border:1px solid #1e1e30;border-radius:8px;margin-bottom:8px">
+      <input type="checkbox" name="rot_variant_ids" value="${v.id}" id="rv${v.id}" ${inSeq ? 'checked' : ''} onchange="updateRotOrder()" style="width:16px;height:16px;accent-color:#60a5fa">
+      <label for="rv${v.id}" style="flex:1;cursor:pointer;margin:0">${v.name}</label>
+      <div style="display:flex;gap:4px">
+        <button type="button" onclick="moveVariant(this,'up')" style="background:#1e1e30;border:none;color:#94a3b8;padding:4px 8px;border-radius:4px;cursor:pointer">↑</button>
+        <button type="button" onclick="moveVariant(this,'down')" style="background:#1e1e30;border:none;color:#94a3b8;padding:4px 8px;border-radius:4px;cursor:pointer">↓</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Active variant info
+  const activeVariantName = link.rot_active_id && variantNames
+    ? ((variants||[]).find(v => v.id === link.rot_active_id)?.name || `ID ${link.rot_active_id}`)
+    : null;
+  const activeInfo = (linkMode === 'own' && link.rot_active_id)
+    ? `<div style="margin-top:12px;padding:10px 14px;background:#0a0a14;border:1px solid #1e3a5f;border-radius:8px;font-size:13px;color:#94a3b8">
+        Currently showing: <strong style="color:#60a5fa">${activeVariantName}</strong>
+        &nbsp;·&nbsp; ${link.rot_click_count || 0} clicks since last rotation
+        ${link.rot_started_at ? `&nbsp;·&nbsp; Started: ${new Date(link.rot_started_at).toLocaleString()}` : ''}
+      </div>`
+    : '';
+
+  // Sort own variant rows by their sequence position
+  const sortedSequenceIds = JSON.stringify(rotSequence);
 
   res.send(layout('Edit Tracking Link', `
+    <style>
+      .badge-blue{background:#1e3a5f;color:#60a5fa;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+      .mode-section{display:none;margin-top:16px;padding:16px;background:#0d0d18;border:1px solid #1e1e30;border-radius:10px}
+      .mode-section.active{display:block}
+      .radio-option{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid #1e1e30;border-radius:8px;margin-bottom:10px;cursor:pointer;transition:.15s}
+      .radio-option:hover{border-color:#3b3b5a}
+      .radio-option input[type=radio]{margin-top:2px;accent-color:#a78bfa}
+      .radio-option .opt-title{font-weight:600;color:#e2e8f0;font-size:14px}
+      .radio-option .opt-desc{font-size:12px;color:#64748b;margin-top:2px}
+    </style>
     <div class="card">
       <div class="card-title">Edit: /r/${link.slug}</div>
-      <form method="POST" action="/admin/tracking/${link.id}/edit">
+      <form method="POST" action="/admin/tracking/${link.id}/edit" id="edit-form">
         <div class="form-group"><label>Label</label><input type="text" name="name" value="${link.name||''}"></div>
         <div class="form-group"><label>Destination</label><input type="text" name="destination" value="${link.destination||'/'}"></div>
+
         <div class="form-group">
-          <label>Force Variant <span style="color:#64748b;font-weight:normal;font-size:12px">(override rotation for visitors from this link)</span></label>
-          <select name="forced_variant_id">${variantOptions}</select>
+          <label>Rotation Mode</label>
+
+          <div class="radio-option" onclick="setMode('global')" id="opt-global">
+            <input type="radio" name="link_mode" value="global" id="mode-global" ${linkMode==='global'?'checked':''} onchange="setMode('global')">
+            <div><div class="opt-title">🌐 Global rotation</div><div class="opt-desc">Follows the site-wide rotation settings</div></div>
+          </div>
+
+          <div class="radio-option" onclick="setMode('forced')" id="opt-forced">
+            <input type="radio" name="link_mode" value="forced" id="mode-forced" ${linkMode==='forced'?'checked':''} onchange="setMode('forced')">
+            <div><div class="opt-title">🎯 Force variant</div><div class="opt-desc">Always shows one specific variant to visitors from this link</div></div>
+          </div>
+
+          <div class="radio-option" onclick="setMode('own')" id="opt-own">
+            <input type="radio" name="link_mode" value="own" id="mode-own" ${linkMode==='own'?'checked':''} onchange="setMode('own')">
+            <div><div class="opt-title">🔄 Own rotation</div><div class="opt-desc">This link has its own independent rotation with custom variants and rules</div></div>
+          </div>
         </div>
-        <div class="flex" style="gap:12px">
+
+        <!-- Forced variant section -->
+        <div class="mode-section ${linkMode==='forced'?'active':''}" id="section-forced">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Variant to always show</label>
+            <select name="forced_variant_id">
+              <option value="">Select a variant…</option>
+              ${forcedOptions}
+            </select>
+          </div>
+        </div>
+
+        <!-- Own rotation section -->
+        <div class="mode-section ${linkMode==='own'?'active':''}" id="section-own">
+          <div class="form-group">
+            <label>Variants in rotation <span style="color:#64748b;font-size:12px">(check &amp; reorder)</span></label>
+            <div id="own-variant-list">${ownVariantCheckboxes}</div>
+            <input type="hidden" name="rot_sequence" id="rot-sequence-input" value='${sortedSequenceIds}'>
+          </div>
+
+          <div class="form-group">
+            <label>Rotation mode</label>
+            <select name="rot_mode" id="rot-mode-select" onchange="toggleRotMode(this.value)">
+              <option value="click" ${(link.rot_mode||'click')==='click'?'selected':''}>Click-based — rotate after N visits</option>
+              <option value="time" ${link.rot_mode==='time'?'selected':''}>Time-based — show for N hours</option>
+            </select>
+          </div>
+
+          <div id="rot-click-section" style="${link.rot_mode==='time'?'display:none':''}">
+            <div class="form-group">
+              <label>Rotate after X visits</label>
+              <input type="number" name="rot_click_threshold" value="${link.rot_click_threshold||500}" min="1" style="max-width:160px">
+            </div>
+          </div>
+
+          <div id="rot-time-section" style="${link.rot_mode!=='time'?'display:none':''}">
+            <div class="form-group">
+              <label>Show each variant for X hours</label>
+              <input type="number" name="rot_time_hours" value="${link.rot_time_hours||168}" min="0.1" step="0.1" style="max-width:160px">
+            </div>
+          </div>
+
+          ${activeInfo}
+        </div>
+
+        <div class="flex" style="gap:12px;margin-top:20px">
           <button type="submit" class="btn btn-primary">Save Changes</button>
           <a href="/admin/tracking" class="btn btn-ghost">Cancel</a>
         </div>
       </form>
     </div>
+    <script>
+    function setMode(mode) {
+      document.querySelectorAll('.mode-section').forEach(s => s.classList.remove('active'));
+      var sec = document.getElementById('section-' + mode);
+      if (sec) sec.classList.add('active');
+      var radio = document.getElementById('mode-' + mode);
+      if (radio) radio.checked = true;
+    }
+
+    function toggleRotMode(val) {
+      document.getElementById('rot-click-section').style.display = val === 'click' ? '' : 'none';
+      document.getElementById('rot-time-section').style.display = val === 'time' ? '' : 'none';
+    }
+
+    function updateRotOrder() {
+      var rows = Array.from(document.querySelectorAll('#own-variant-list .own-variant-row'));
+      var seq = rows
+        .filter(r => r.querySelector('input[type=checkbox]').checked)
+        .map(r => parseInt(r.dataset.id));
+      document.getElementById('rot-sequence-input').value = JSON.stringify(seq);
+    }
+
+    function moveVariant(btn, dir) {
+      var row = btn.closest('.own-variant-row');
+      var list = document.getElementById('own-variant-list');
+      if (dir === 'up' && row.previousElementSibling) {
+        list.insertBefore(row, row.previousElementSibling);
+      } else if (dir === 'down' && row.nextElementSibling) {
+        list.insertBefore(row.nextElementSibling, row);
+      }
+      updateRotOrder();
+    }
+
+    // Sort own-variant-list by sequence position on load
+    (function() {
+      var seq = ${sortedSequenceIds};
+      var list = document.getElementById('own-variant-list');
+      var rows = Array.from(list.querySelectorAll('.own-variant-row'));
+      rows.sort(function(a, b) {
+        var ia = seq.indexOf(parseInt(a.dataset.id));
+        var ib = seq.indexOf(parseInt(b.dataset.id));
+        if (ia === -1) ia = 999;
+        if (ib === -1) ib = 999;
+        return ia - ib;
+      });
+      rows.forEach(function(r) { list.appendChild(r); });
+      updateRotOrder();
+    })();
+    </script>
   `, 'tracking'));
 });
 
 // Save tracking link edits
 router.post('/tracking/:id/edit', requireAuth, async (req, res) => {
-  const { name, destination, forced_variant_id } = req.body;
-  const forcedId = forced_variant_id ? parseInt(forced_variant_id) : null;
-  await supabase.from('tracking_links').update({
+  const { name, destination, link_mode, forced_variant_id, rot_mode, rot_sequence, rot_click_threshold, rot_time_hours } = req.body;
+
+  const mode = link_mode || 'global';
+  const forcedId = (mode === 'forced' && forced_variant_id) ? parseInt(forced_variant_id) : null;
+
+  // Parse rot_sequence JSON array
+  let rotSeq = null;
+  if (mode === 'own' && rot_sequence) {
+    try { rotSeq = JSON.parse(rot_sequence); } catch { rotSeq = []; }
+    if (!Array.isArray(rotSeq)) rotSeq = [];
+  }
+
+  const updateData = {
     name: name || null,
     destination: destination || '/',
-    forced_variant_id: forcedId || null,
-  }).eq('id', req.params.id);
+    link_mode: mode,
+    forced_variant_id: forcedId,
+    rot_mode: mode === 'own' ? (rot_mode || 'click') : null,
+    rot_sequence: mode === 'own' ? rotSeq : null,
+    rot_click_threshold: (mode === 'own' && rot_mode !== 'time') ? (parseInt(rot_click_threshold) || 500) : null,
+    rot_time_hours: (mode === 'own' && rot_mode === 'time') ? (parseFloat(rot_time_hours) || 168) : null,
+  };
+
+  // Fetch current link to check if we need to initialize 'own' mode state
+  const { data: currentLink } = await supabase.from('tracking_links').select('link_mode, rot_active_id').eq('id', req.params.id).single();
+
+  if (mode === 'own') {
+    if (!currentLink || currentLink.link_mode !== 'own' || !currentLink.rot_active_id) {
+      // Initialize rotation state when switching to own mode
+      updateData.rot_active_id = (rotSeq && rotSeq.length > 0) ? rotSeq[0] : null;
+      updateData.rot_click_count = 0;
+      updateData.rot_started_at = new Date().toISOString();
+    }
+  } else {
+    // Switching away from own mode — clear rotation state
+    updateData.rot_active_id = null;
+    updateData.rot_click_count = 0;
+    updateData.rot_started_at = null;
+  }
+
+  await supabase.from('tracking_links').update(updateData).eq('id', req.params.id);
   res.redirect('/admin/tracking?msg=saved');
 });
 

@@ -102,7 +102,6 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
               ${(vslLibrary||[]).map(vsl => `<option value="${vsl.id}" ${String(currentVslId) === String(vsl.id) ? 'selected' : ''}>${vsl.name} (${vsl.type})</option>`).join('')}
             </select>
           </div>
-          </div>
           <button onclick="saveVslSettings()" style="width:100%;background:#1e1e35;border:1px solid #2d2d4a;color:#94a3b8;padding:8px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;transition:.15s" onmouseover="this.style.borderColor='#7c3aed';this.style.color='#a78bfa'" onmouseout="this.style.borderColor='#2d2d4a';this.style.color='#94a3b8'">Save VSL</button>
           <div id="vsl-save-status" style="font-size:11px;color:#64748b;margin-top:6px"></div>
         </div>

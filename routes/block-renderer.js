@@ -54,20 +54,73 @@ function renderVSL(b) {
   const isFile = !!b.vsl_file;
   const src = b.vsl_file || b.vsl_url;
   const uid = 'vsl_' + Math.random().toString(36).slice(2, 8);
+  const isYouTube = !isFile && /youtube\.com\/embed\//.test(src);
+  const ytVideoId = isYouTube ? (src.match(/youtube\.com\/embed\/([^?&]+)/) || [])[1] : null;
 
   let mediaHTML, scriptHTML;
+
   if (isFile) {
-    mediaHTML = `<div class="vsl-wrap"><video id="${uid}" src="${src}" controls preload="metadata"></video></div>`;
-    scriptHTML = `<script>(function(){var v=document.getElementById('${uid}');if(!v)return;v.addEventListener('loadedmetadata',function(){v.currentTime=0.001;});setTimeout(function(){v.muted=false;v.volume=1;v.play().catch(function(){});},2000);})();<\/script>`;
+    mediaHTML = `<div class="vsl-wrap" id="wrap-${uid}"><video id="${uid}" src="${src}" controls preload="metadata" playsinline></video></div>`;
+    scriptHTML = `<script>(function(){
+  var v=document.getElementById('${uid}');if(!v)return;
+  v.addEventListener('loadedmetadata',function(){v.currentTime=0.001;});
+  setTimeout(function(){
+    v.muted=true;
+    v.play().then(function(){
+      v.muted=false;v.volume=1;
+      setTimeout(function(){
+        if(v.muted){
+          var wrap=document.getElementById('wrap-${uid}');
+          var btn=document.createElement('button');
+          btn.textContent='🔊 Tap to Unmute';
+          btn.style.cssText='position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;border:2px solid #fff;border-radius:999px;padding:10px 22px;font-size:15px;font-weight:700;cursor:pointer;z-index:20;white-space:nowrap';
+          btn.onclick=function(){v.muted=false;v.volume=1;btn.remove();};
+          wrap.appendChild(btn);
+        }
+      },300);
+    }).catch(function(){});
+  },2000);
+})();<\/script>`;
+  } else if (isYouTube && ytVideoId) {
+    mediaHTML = `<div class="vsl-wrap" id="wrap-${uid}"><div id="${uid}"></div></div>`;
+    scriptHTML = `<script>(function(){
+  function initPlayer(){
+    new YT.Player('${uid}',{
+      videoId:'${ytVideoId}',
+      playerVars:{rel:0,modestbranding:1,autoplay:1,mute:1,playsinline:1},
+      events:{onReady:function(e){
+        setTimeout(function(){
+          e.target.unMute();e.target.setVolume(100);
+          setTimeout(function(){
+            if(e.target.isMuted()){
+              var wrap=document.getElementById('wrap-${uid}');
+              var btn=document.createElement('button');
+              btn.textContent='🔊 Tap to Unmute';
+              btn.style.cssText='position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;border:2px solid #fff;border-radius:999px;padding:10px 22px;font-size:15px;font-weight:700;cursor:pointer;z-index:20;white-space:nowrap';
+              btn.onclick=function(){e.target.unMute();e.target.setVolume(100);btn.remove();};
+              wrap.appendChild(btn);
+            }
+          },400);
+        },2000);
+      }}
+    });
+  }
+  if(window.YT&&window.YT.Player){initPlayer();}
+  else{
+    var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);
+    var prev=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=function(){if(prev)prev();initPlayer();};
+  }
+})();<\/script>`;
   } else {
-    const embedSrc = src + (src.includes('?') ? '&' : '?') + 'enablejsapi=1&rel=0';
-    mediaHTML = `<div class="vsl-wrap"><iframe id="${uid}" src="${embedSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`;
-    scriptHTML = `<script>setTimeout(function(){var f=document.getElementById('${uid}');if(!f)return;try{f.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}','*');f.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}','*');f.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}','*');}catch(e){}},2000);<\/script>`;
+    const embedSrc = src + (src.includes('?') ? '&' : '?') + 'autoplay=1';
+    mediaHTML = `<div class="vsl-wrap"><iframe src="${embedSrc}" frameborder="0" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`;
+    scriptHTML = '';
   }
 
   return `
   <section class="block-vsl" style="padding:48px 0;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
-    <style>.vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}.vsl-wrap iframe,.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%;border:none}@media(max-width:768px){.block-vsl{padding:0}.vsl-wrap{border-radius:0;box-shadow:none}}</style>
+    <style>.vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}.vsl-wrap iframe,.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%;border:none}.vsl-wrap>div{position:absolute;top:0;left:0;width:100%;height:100%}@media(max-width:768px){.block-vsl{padding:0}.vsl-wrap{border-radius:0;box-shadow:none}}</style>
     <div class="container" style="padding:0 20px">
       ${b.caption ? `<p style="text-align:center;color:#94a3b8;margin-bottom:20px;font-size:15px">${b.caption}</p>` : ''}
       ${mediaHTML}

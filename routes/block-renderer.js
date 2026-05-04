@@ -112,11 +112,11 @@ function renderTestimonials(b, testimonialData) {
         ${b.title ? `<h2 style="font-size:clamp(24px,4vw,36px);font-weight:700">${b.title}</h2>` : ''}
       </div>
       <div class="testimonials-carousel-wrap" id="wrap-${blockId}" style="position:relative;overflow:hidden;padding:0 40px">
-        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8249;</button>
+        <button class="car-btn car-prev" onclick="carMove_${blockId}(-1)" style="position:absolute;top:50%;left:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8249;</button>
         <div style="overflow:hidden">
-          <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:20px;transition:transform 0.5s ease;align-items:flex-start">${carouselCards}</div>
+          <div class="carousel-track" id="track-${blockId}" style="display:flex;gap:12px;transition:transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94);align-items:flex-start">${carouselCards}</div>
         </div>
-        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:#1e1e30;border:1px solid #2d2d4a;color:#e2e8f0;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center">&#8250;</button>
+        <button class="car-btn car-next" onclick="carMove_${blockId}(1)" style="position:absolute;top:50%;right:0;transform:translateY(-50%);background:rgba(18,18,31,0.85);border:1px solid rgba(255,255,255,0.1);color:#e2e8f0;width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">&#8250;</button>
       </div>
     </div>
   </section>
@@ -131,7 +131,7 @@ function renderTestimonials(b, testimonialData) {
     var timer;
     function cardWidth() { return allCards[0] ? allCards[0].offsetWidth + 20 : 0; }
     function goTo(idx, animate) {
-      track.style.transition = animate === false ? 'none' : 'transform 0.5s ease';
+      track.style.transition = animate === false ? 'none' : 'transform 0.6s cubic-bezier(0.25,0.46,0.45,0.94)';
       track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
     }
     track.addEventListener('transitionend', function() {
@@ -275,9 +275,9 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
     .btn-submit{width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;transition:.2s}
     .btn-submit:hover{opacity:.9}
     .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;font-weight:600}
-    .testimonial-card{flex:0 0 calc(33.333% - 14px);background:#12121f;border:1px solid #1e1e30;border-radius:16px;padding:24px;text-align:center}
-    .testimonial-card.tg-card{padding:8px;background:transparent;border:none}
-    @media(max-width:768px){.testimonial-card{flex:0 0 100%}}
+    .testimonial-card{flex:0 0 calc(33.333% - 8px);background:#12121f;border:1px solid rgba(255,255,255,0.07);border-radius:24px;padding:20px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.25)}
+    .testimonial-card.tg-card{padding:4px;background:transparent;border:none;box-shadow:none}
+    @media(max-width:768px){.testimonial-card{flex:0 0 calc(47% - 6px)}}
     .success-msg{background:#064e3b;border:1px solid #065f46;color:#6ee7b7;padding:16px;border-radius:10px;margin-top:12px;display:none}
     .custom-block img{max-width:100%}
     @media(max-width:640px){

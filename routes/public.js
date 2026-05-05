@@ -80,7 +80,7 @@ async function runLinkRotation(link) {
 // Tracking link redirect
 router.get('/r/:slug', async (req, res) => {
   const { slug } = req.params;
-  const { data: link } = await supabase.from('tracking_links').select('*').eq('slug', slug).single();
+  const { data: link } = await supabase.from('tracking_links').select('*').ilike('slug', slug).single();
   if (!link) return res.redirect('/');
 
   const ip = getIP(req);
@@ -357,8 +357,8 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
   if (RESERVED.has(slug.toLowerCase())) return next();
 
-  const { data: link } = await supabase.from('tracking_links').select('*').eq('slug', slug).single();
-  if (!link) return next();
+  const { data: link } = await supabase.from('tracking_links').select('*').ilike('slug', slug).single();
+  if (!link) return serveVariant(req, res, next, null, null);
 
   // Set tracking cookie
   res.cookie('mfc_ref', slug, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });

@@ -229,11 +229,11 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
     var timer;
     function cardWidth() {
       if (!allCards[0]) return 0;
-      var gap = parseFloat(window.getComputedStyle(track).gap) || 0;
+      var gap = parseFloat(window.getComputedStyle(track).gap) || 12;
       return allCards[0].getBoundingClientRect().width + gap;
     }
     function goTo(idx, animate) {
-      track.style.transition = animate === false ? 'none' : 'transform 0.5s ease';
+      track.style.transition = animate === false ? 'none' : 'transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94)';
       track.style.transform = 'translateX(-' + (idx * cardWidth()) + 'px)';
     }
     track.addEventListener('transitionend', function() {
@@ -243,10 +243,17 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
     function advance() { current++; goTo(current, true); }
     function startTimer() { timer = setInterval(advance, 3500); }
     function stopTimer() { clearInterval(timer); }
-    startTimer();
+    function initCarousel() {
+      var cw = cardWidth();
+      if (cw === 0) { requestAnimationFrame(initCarousel); return; }
+      goTo(0, false);
+      startTimer();
+    }
     wrap.addEventListener('mouseenter', stopTimer);
     wrap.addEventListener('mouseleave', startTimer);
+    window.addEventListener('resize', function() { clearInterval(timer); goTo(current, false); startTimer(); });
     window['carMove_${blockId}'] = function(dir) { stopTimer(); current += dir; goTo(current, true); startTimer(); };
+    requestAnimationFrame(initCarousel);
   })();
   <\/script>`;
 }

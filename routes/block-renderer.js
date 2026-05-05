@@ -529,7 +529,7 @@ function renderMarketplaceCreators(b) {
 
   function load(append) {
     var grid = document.getElementById('grid-${uid}');
-    if (!append) grid.innerHTML = '${skeletons.replace(/\/g, '\\')}';
+    if (!append) grid.innerHTML = skeletons;
     var url='/api/marketplace/creators?perPage=${limit}&page='+page;
     if (activeCat) url+='&category='+encodeURIComponent(activeCat);
     fetch(url).then(function(r){return r.json();}).then(function(d){

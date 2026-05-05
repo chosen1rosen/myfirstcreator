@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../db');
 const { getActiveVariant, renderLandingPage } = require('./admin-variants');
 const { renderPageFromBlocks } = require('./block-renderer');
+const { renderMarketplacePage } = require('./marketplace-renderer');
 const { getActiveEvent } = require('./addcal');
 
 async function getCountry(ip) {
@@ -322,7 +323,9 @@ async function serveVariant(req, res, next, variantId, trackingSlug) {
       const { data: vsl } = await supabase.from('vsls').select('*').eq('id', variant.vsl_id).single();
       vslData = vsl || null;
     }
-    if (variant.page_mode === 'custom' && variant.custom_html) {
+    if (variant.page_mode === 'marketplace') {
+      res.send(await renderMarketplacePage(variant, false));
+    } else if (variant.page_mode === 'custom' && variant.custom_html) {
       res.send(variant.custom_html);
     } else if (variant.page_mode === 'builder' && variant.blocks?.length > 0) {
       res.send(renderPageFromBlocks(variant.blocks, testimonials || []));

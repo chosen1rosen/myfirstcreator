@@ -89,6 +89,7 @@ module.exports.router = router;
 
 const layout = require('./admin-layout');
 const { renderPageFromBlocks } = require('./block-renderer');
+const { renderMarketplacePage } = require('./marketplace-renderer');
 
 // List variants
 router.get('/', requireAuth, async (req, res) => {
@@ -126,6 +127,7 @@ router.get('/', requireAuth, async (req, res) => {
           <a href="/admin/variants/${v.id}/edit" class="btn btn-ghost btn-sm">Quick Edit</a>
           <a href="/admin/variants/${v.id}/builder" class="btn btn-ghost btn-sm" style="color:#a78bfa">🧱 Builder</a>
           <a href="/admin/variants/${v.id}/custom" class="btn btn-ghost btn-sm" style="color:#06b6d4">✨ Custom</a>
+          <a href="/admin/variants/${v.id}/marketplace" class="btn btn-ghost btn-sm" style="color:#10b981">🛒 Marketplace</a>
           <a href="/admin/variants/${v.id}/preview" target="_blank" class="btn btn-ghost btn-sm">Preview</a>
           ${!isActive ? `<form method="POST" action="/admin/variants/${v.id}/activate" style="display:inline"><button class="btn btn-primary btn-sm">Set Live</button></form>` : '<span style="color:#6ee7b7;font-size:12px">● Live</span>'}
         </div>
@@ -303,7 +305,9 @@ router.get('/:id/preview', requireAuth, async (req, res) => {
     const { data: vsl } = await supabase.from('vsls').select('*').eq('id', v.vsl_id).single();
     vslData = vsl || null;
   }
-  if (v.page_mode === 'custom' && v.custom_html) {
+  if (v.page_mode === 'marketplace') {
+    res.send(await renderMarketplacePage(v, true));
+  } else if (v.page_mode === 'custom' && v.custom_html) {
     const html = v.custom_html.replace('<body>', '<body><div style="position:fixed;top:0;left:0;right:0;background:#7c3aed;color:white;text-align:center;padding:8px;font-size:13px;z-index:99999">⚠️ PREVIEW MODE</div><div style="height:36px"></div>');
     res.send(html);
   } else if (v.page_mode === 'builder' && v.blocks?.length > 0) {
@@ -444,6 +448,74 @@ router.post('/rotation', requireAuth, async (req, res) => {
 
   await Promise.all(saves);
   res.redirect('/admin/variants');
+});
+
+// ─── Marketplace variant editor ──────────────────────────────────────────────
+
+router.get('/:id/marketplace', requireAuth, async (req, res) => {
+  const { data: v } = await supabase.from('variants').select('*').eq('id', req.params.id).single();
+  if (!v) return res.redirect('/admin/variants');
+
+  let cfg = {};
+  if (v.blocks) {
+    const b = Array.isArray(v.blocks) ? v.blocks[0] : v.blocks;
+    if (b && typeof b === 'object') cfg = b;
+  }
+
+  const isMarketplace = v.page_mode === 'marketplace';
+
+  res.send(layout(`Marketplace: ${v.name}`, `
+    <div class="flex-between" style="margin-bottom:20px">
+      <a href="/admin/variants" class="btn btn-ghost btn-sm">← Back to Variants</a>
+      <a href="/admin/variants/${v.id}/preview" target="_blank" class="btn btn-ghost btn-sm">Preview →</a>
+    </div>
+
+    ${!isMarketplace ? `
+    <div class="card" style="margin-bottom:20px;border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.05)">
+      <p style="font-size:14px;color:#6ee7b7">ℹ️ This variant is currently in <strong>${v.page_mode || 'default'}</strong> mode. Saving this form will switch it to <strong>marketplace</strong> mode.</p>
+    </div>` : ''}
+
+    <form method="POST" action="/admin/variants/${v.id}/marketplace/save">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">🛒 Marketplace Page Config</div>
+        <p style="font-size:13px;color:#64748b;margin-bottom:20px">This variant renders a full marketplace landing page using live data from aicreatormarketplace.com.</p>
+
+        <div class="form-group"><label>Hero Line 1 (white text)</label><input type="text" name="hero_headline1" value="${cfg.hero_headline1 || v.headline || ''}" placeholder="Build and Scale Your"></div>
+        <div class="form-group"><label>Hero Line 2 (pink accent text)</label><input type="text" name="hero_headline2" value="${cfg.hero_headline2 || ''}" placeholder="AI Creator Income"></div>
+        <div class="form-group"><label>Hero Line 3 (white text)</label><input type="text" name="hero_headline3" value="${cfg.hero_headline3 || ''}" placeholder="Starting Today"></div>
+        <div class="form-group"><label>Hero Subheadline</label><textarea name="hero_subheadline" rows="3" placeholder="Browse thousands of AI creators...">${cfg.hero_subheadline || v.subheadline || ''}</textarea></div>
+        <div class="form-group"><label>Social Proof Text (below CTA button)</label><input type="text" name="social_proof" value="${cfg.social_proof || ''}" placeholder="Join 50,000+ successful affiliates"></div>
+        <div class="form-group"><label>CTA Button Text</label><input type="text" name="cta_text" value="${cfg.cta_text || v.cta_text || ''}" placeholder="Get Started For Free"></div>
+        <div class="form-group"><label>CTA URL (where all buttons link)</label><input type="text" name="cta_url" value="${cfg.cta_url || 'https://aicreatormarketplace.com'}" placeholder="https://aicreatormarketplace.com"></div>
+        <div class="form-group"><label>Campaign ID (for lead attribution — optional)</label><input type="text" name="campaign_id" value="${cfg.campaign_id || ''}" placeholder="e.g. webinar-2025"></div>
+        <div class="form-group"><label>Number of Creators to Show in Showcase</label><input type="number" name="creator_limit" value="${cfg.creator_limit || 8}" min="4" max="24"></div>
+      </div>
+
+      <div class="flex" style="gap:12px">
+        <button type="submit" class="btn btn-primary" style="background:linear-gradient(135deg,#10b981,#059669)">Save &amp; Activate Marketplace Mode</button>
+        <a href="/admin/variants/${v.id}/edit" class="btn btn-ghost">Quick Edit</a>
+        <a href="/admin/variants" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  `, 'variants'));
+});
+
+router.post('/:id/marketplace/save', requireAuth, async (req, res) => {
+  const { hero_headline1, hero_headline2, hero_headline3, hero_subheadline, social_proof, cta_text, cta_url, campaign_id, creator_limit } = req.body;
+  const cfg = {
+    hero_headline1, hero_headline2, hero_headline3,
+    hero_subheadline, social_proof, cta_text, cta_url,
+    campaign_id, creator_limit: parseInt(creator_limit) || 8,
+  };
+  await supabase.from('variants').update({
+    page_mode: 'marketplace',
+    blocks: cfg,
+    headline: hero_headline1 || null,
+    subheadline: hero_subheadline || null,
+    cta_text: cta_text || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', req.params.id);
+  res.redirect(`/admin/variants/${req.params.id}/marketplace`);
 });
 
 // ─── variant form HTML ───────────────────────────────────────────────────────

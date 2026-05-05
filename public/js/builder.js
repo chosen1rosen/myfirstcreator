@@ -1,5 +1,8 @@
     const BLOCK_TYPES = window.__BUILDER__.blockTypes;
+    const MP_BLOCK_TYPES = window.__BUILDER__.mpBlockTypes || [];
+    const ALL_BLOCK_TYPES = [...BLOCK_TYPES, ...MP_BLOCK_TYPES];
     let blocks = window.__BUILDER__.blocks;
+    let marketplaceMode = window.__BUILDER__.marketplaceMode || false;
     let dirty = false;
     const VSL_LIBRARY = window.__BUILDER__.vslLibrary;
     const VARIANT_VSL_ID = window.__BUILDER__.variantVslId;
@@ -31,6 +34,30 @@
         { media_type:'image', image:'', video:'', engagement:'5.8K', engagement_type:'views' },
         { media_type:'image', image:'', video:'', engagement:'340K', engagement_type:'likes' },
       ]},
+    };
+
+    // ── Marketplace block defaults ────────────────────────────────────────────
+    const MP_DEFAULTS = {
+      mp_header: { type:'mp_header', logo_text:'AI Creator Marketplace', cta_text:'Get Started Free', cta_url:'https://aicreatormarketplace.com', nav_links:[{label:'How It Works',href:'#how'},{label:'Browse Creators',href:'#creators'},{label:'Community',href:'#community'},{label:'Pricing',href:'#pricing'}] },
+      mp_hero: { type:'mp_hero', headline1:'Build and Scale Your', headline2:'AI Creator Income', headline3:'Starting Today', subheadline:'Browse thousands of AI creators, claim your affiliate link, and start earning commissions — all without creating content yourself.', cta_text:'Get Started For Free', cta_url:'https://aicreatormarketplace.com', social_proof:'Join 50,000+ successful affiliates' },
+      mp_creator_scroll: { type:'mp_creator_scroll', items:[
+        { media_type:'image', image:'', emoji:'💃', engagement:'2.1M', earnings:'$12.4K', engagement_type:'likes' },
+        { media_type:'image', image:'', emoji:'🤖', engagement:'780K', earnings:'$5.8K', engagement_type:'likes' },
+        { media_type:'image', image:'', emoji:'👑', engagement:'1.2M', earnings:'$8.1K', engagement_type:'likes' },
+        { media_type:'image', image:'', emoji:'🎭', engagement:'340K', earnings:'$3.2K', engagement_type:'likes' },
+        { media_type:'image', image:'', emoji:'🔥', engagement:'920K', earnings:'$15.3K', engagement_type:'likes' },
+      ]},
+      mp_how_it_works: { type:'mp_how_it_works', title:'HOW IT WORKS', card1_title:'BROWSE YOUR CREATOR', card1_text:'Explore thousands of AI-powered creators across every niche. Pick one that matches your audience.', card1_color:'#ff3366', card2_title:'SHARE YOUR LINK', card2_text:'Get your unique affiliate link instantly. Post it on TikTok, Instagram, X, YouTube, or email.', card2_color:'#ff3366', card3_title:'GET PAID', card3_text:'Earn commissions on every signup and sale your links generate. Paid weekly to your bank or PayPal.', card3_color:'#22c55e' },
+      mp_feature: { type:'mp_feature', badge:'FEATURE', title:'Your Feature Title', text:'Describe your feature here. What does it do and why does it matter to your audience?', text2:'', cta_text:'Learn More →', cta_url:'https://aicreatormarketplace.com', image_url:'', image_side:'left', glow:true, pink_title:true },
+      mp_community: { type:'mp_community', headline1:"Don't Build Alone.", headline2:'Join the Inner Circle.', text:'Connect with top affiliate earners, share what\'s working, and get exclusive strategies from our private creator community. Members earn 3x more on average.', cta_text:'Join the Discord →', cta_url:'https://aicreatormarketplace.com/community' },
+      mp_pricing: { type:'mp_pricing', headline:'Create. Post. Profit.', subheadline:'Join the platform that pays affiliates every week', cta_url:'https://aicreatormarketplace.com', plans:[
+        { name:'Starter Affiliate', price:'Free', per:'forever', featured:false, features:['Browse all creators','Get your affiliate link','Basic analytics','Email support'] },
+        { name:'Pro Affiliate', price:'$29', per:'mo', featured:true, features:['Everything in Starter','Advanced analytics','Priority creator access','Weekly payout','Account manager'] },
+        { name:'Agency', price:'$79', per:'mo', featured:false, features:['Everything in Pro','Manage 5 sub-affiliates','White-label dashboard','API access'] },
+        { name:'Enterprise', price:'Custom', per:'', featured:false, features:['Everything in Agency','Unlimited sub-affiliates','Custom integrations','SLA guarantee'] },
+      ]},
+      mp_final_cta: { type:'mp_final_cta', headline:'Start Your AI Creator\nIncome Journey Today', subheadline:'Join 50,000+ affiliates already earning commissions every week', cta_text:'Start Your Free Trial', cta_url:'https://aicreatormarketplace.com', trust_text:'No credit card required • Cancel anytime' },
+      mp_footer: { type:'mp_footer', logo_text:'AI Creator Marketplace', tagline:'Build and Scale Your AI Creator Income', cta_url:'https://aicreatormarketplace.com' },
     };
 
     // ── Builder media upload helpers ─────────────────────────────────────────
@@ -90,6 +117,8 @@
               updateHowItWorksStep(blockIdx, itemIdx, fieldKey, url);
             } else if (blockType === 'creator_scroll') {
               updateCreatorItem(blockIdx, itemIdx, fieldKey, url);
+            } else if (blockType === 'mp_creator_scroll') {
+              updateMpCreatorItem(blockIdx, itemIdx, fieldKey, url);
             }
             render();
             debouncePreview();
@@ -113,8 +142,21 @@
 
     let openBlocks = new Set();
 
+    function toggleMarketplaceMode(enabled) {
+      marketplaceMode = enabled;
+      blocks = blocks.filter(b => b.type !== 'mp_mode');
+      if (enabled) blocks.unshift({ type: 'mp_mode' });
+      document.getElementById('block-type-buttons').style.display = enabled ? 'none' : '';
+      document.getElementById('mp-block-type-buttons').style.display = enabled ? '' : 'none';
+      const toggle = document.getElementById('mp-mode-toggle');
+      if (toggle) toggle.checked = enabled;
+      dirty = true; markUnsaved(); render(); refreshPreview();
+    }
+    window.toggleMarketplaceMode = toggleMarketplaceMode;
+
     function renderBlockEditor(b, i) {
-      const typeInfo = BLOCK_TYPES.find(t => t.type === b.type) || { label: b.type };
+      if (b.type === 'mp_mode') return '';
+      const typeInfo = ALL_BLOCK_TYPES.find(t => t.type === b.type) || { label: b.type };
       return `<div class="block-item" data-block-index="${i}">
         <div class="block-header" onclick="toggleBlock(${i})">
           <span class="block-drag" title="Drag to reorder">⠿</span>
@@ -168,8 +210,100 @@
         case 'marketplace_creators': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('limit','Creators Per Page','number') + f('cta_text','CTA Button Text (optional)') + f('cta_link','CTA Button URL') + f('marketplace_url','Marketplace Base URL');
         case 'marketplace_categories': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('marketplace_url','Marketplace Base URL');
         case 'marketplace_lead': return f('title','Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('cta_text','Button Text') + f('placeholder','Email Placeholder') + f('campaign_id','Campaign ID (optional)') + f('bg_color','Background Color','text','placeholder="transparent"');
+        case 'mp_header': return f('logo_text','Logo Text') + f('cta_text','Nav CTA Button Text') + f('cta_url','Nav CTA URL');
+        case 'mp_hero': return f('headline1','Line 1 (white)') + f('headline2','Line 2 (pink accent)') + f('headline3','Line 3 (white)') + ta('subheadline','Subheadline') + f('cta_text','CTA Button Text') + f('cta_url','CTA URL') + f('social_proof','Social Proof Text (below button)');
+        case 'mp_creator_scroll': return renderMpCreatorScrollForm(b, i);
+        case 'mp_how_it_works': return f('title','Section Title') + '<div style="font-size:11px;color:#64748b;font-weight:600;margin:12px 0 6px">CARD 1</div>' + f('card1_title','Card 1 Title') + ta('card1_text','Card 1 Text',2) + f('card1_color','Card 1 Arrow Color','text') + '<div style="font-size:11px;color:#64748b;font-weight:600;margin:12px 0 6px">CARD 2</div>' + f('card2_title','Card 2 Title') + ta('card2_text','Card 2 Text',2) + f('card2_color','Card 2 Arrow Color','text') + '<div style="font-size:11px;color:#64748b;font-weight:600;margin:12px 0 6px">CARD 3</div>' + f('card3_title','Card 3 Title') + ta('card3_text','Card 3 Text',2) + f('card3_color','Card 3 Arrow Color','text');
+        case 'mp_feature': return f('badge','Badge Label (e.g. ANALYTICS)') + f('title','Title') + ta('text','Body Text') + ta('text2','Body Text Line 2 (optional)',2) + f('cta_text','CTA Button Text') + f('cta_url','CTA URL') + f('image_url','Image URL (optional)') + sel('image_side','Image Position',[{v:'left',l:'Image Left'},{v:'right',l:'Image Right'}]) + chk('glow','Pink Glow Border') + chk('pink_title','Pink Title Color');
+        case 'mp_community': return f('headline1','Headline Line 1 (white)') + f('headline2','Headline Line 2 (pink)') + ta('text','Body Text') + f('cta_text','Button Text') + f('cta_url','Button URL (Discord link)');
+        case 'mp_pricing': return f('headline','Section Headline') + f('subheadline','Subheadline') + f('cta_url','CTA URL for all plan buttons') + renderMpPricingForm(b, i);
+        case 'mp_final_cta': return f('headline','Headline (use \\n for line break)') + f('subheadline','Subheadline') + f('cta_text','Button Text') + f('cta_url','Button URL') + f('trust_text','Trust Text (below button)');
+        case 'mp_footer': return f('logo_text','Logo Text') + f('tagline','Tagline') + f('cta_url','Base URL for footer links');
         default: return '<p style="color:#64748b;font-size:13px">No options for this block type.</p>';
       }
+    }
+
+    // ── Marketplace form helpers ──────────────────────────────────────────────
+
+    function renderMpCreatorScrollForm(b, i) {
+      var items = b.items || [];
+      var rows = items.map(function(item, j) {
+        var isVideo = item.media_type === 'video';
+        return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
+          + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">CREATOR ' + (j+1) + ' <button onclick="removeMpCreatorItem(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
+          + '<div class="field"><label>Media Type</label><select onchange="updateMpCreatorItem(' + i + ',' + j + ',\'media_type\',this.value);render()">'
+          + '<option value="image"' + (!isVideo ? ' selected' : '') + '>Photo</option>'
+          + '<option value="video"' + (isVideo ? ' selected' : '') + '>Video</option>'
+          + '</select></div>'
+          + (!isVideo ? '<div class="field"><label>Photo URL</label><div style="display:flex;gap:6px;align-items:center"><input type="text" value="' + esc(item.image||'') + '" onchange="updateMpCreatorItem(' + i + ',' + j + ',\'image\',this.value)" placeholder="https://... or upload →" style="flex:1"><button onclick="triggerMediaUpload(\'mp_creator_scroll\',' + i + ',' + j + ',\'image\',\'mpc_img_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#fca5a5;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">📤 Upload</button></div><div id="mpc_img_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div></div>' : '')
+          + (isVideo ? '<div class="field"><label>Video URL</label><div style="display:flex;gap:6px;align-items:center"><input type="text" value="' + esc(item.video||'') + '" onchange="updateMpCreatorItem(' + i + ',' + j + ',\'video\',this.value)" placeholder="https://... or upload →" style="flex:1"><button onclick="triggerMediaUpload(\'mp_creator_scroll\',' + i + ',' + j + ',\'video\',\'mpc_vid_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#fca5a5;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">📤 Upload</button></div><div id="mpc_vid_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div></div>' : '')
+          + '<div class="field"><label>Fallback Emoji (if no image/video)</label><input type="text" value="' + esc(item.emoji||'🤖') + '" onchange="updateMpCreatorItem(' + i + ',' + j + ',\'emoji\',this.value)" style="width:60px"></div>'
+          + '<div class="field"><label>Earnings Badge (e.g. $12.4K)</label><input type="text" value="' + esc(item.earnings||'') + '" onchange="updateMpCreatorItem(' + i + ',' + j + ',\'earnings\',this.value)"></div>'
+          + '<div class="field"><label>Engagement Count (e.g. 2.1M)</label><input type="text" value="' + esc(item.engagement||'') + '" onchange="updateMpCreatorItem(' + i + ',' + j + ',\'engagement\',this.value)"></div>'
+          + '</div>';
+      }).join('');
+      return '<div style="margin-top:4px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Creator Cards</div>'
+        + rows
+        + '<button onclick="addMpCreatorItem(' + i + ')" class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;border-color:rgba(255,51,102,.3);color:#fca5a5">+ Add Creator Card</button></div>';
+    }
+
+    function updateMpCreatorItem(blockIdx, itemIdx, key, val) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      if (!blocks[blockIdx].items[itemIdx]) blocks[blockIdx].items[itemIdx] = {};
+      blocks[blockIdx].items[itemIdx][key] = val;
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function addMpCreatorItem(blockIdx) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      blocks[blockIdx].items.push({ media_type:'image', image:'', emoji:'🤖', engagement:'', earnings:'', engagement_type:'likes' });
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+    function removeMpCreatorItem(blockIdx, itemIdx) {
+      if (!blocks[blockIdx].items) return;
+      blocks[blockIdx].items.splice(itemIdx, 1);
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+
+    function renderMpPricingForm(b, i) {
+      var plans = b.plans || [];
+      var rows = plans.map(function(plan, j) {
+        return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
+          + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">PLAN ' + (j+1) + ' <button onclick="removeMpPlan(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
+          + '<div class="field"><label>Plan Name</label><input type="text" value="' + esc(plan.name||'') + '" onchange="updateMpPlan(' + i + ',' + j + ',\'name\',this.value)"></div>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+          + '<div class="field"><label>Price (e.g. $29 or Free)</label><input type="text" value="' + esc(plan.price||'') + '" onchange="updateMpPlan(' + i + ',' + j + ',\'price\',this.value)"></div>'
+          + '<div class="field"><label>Per (e.g. mo)</label><input type="text" value="' + esc(plan.per||'') + '" onchange="updateMpPlan(' + i + ',' + j + ',\'per\',this.value)"></div>'
+          + '</div>'
+          + '<div class="field" style="display:flex;align-items:center;gap:8px"><input type="checkbox" ' + (plan.featured ? 'checked' : '') + ' onchange="updateMpPlan(' + i + ',' + j + ',\'featured\',this.checked)" style="width:auto;margin:0"><label style="margin:0;font-size:12px">Most Popular (highlighted)</label></div>'
+          + '<div class="field"><label>Features (one per line)</label><textarea rows="4" onchange="updateMpPlanFeatures(' + i + ',' + j + ',this.value)">' + esc((plan.features||[]).join('\n')) + '</textarea></div>'
+          + '</div>';
+      }).join('');
+      return '<div style="margin-top:12px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Pricing Plans</div>'
+        + rows
+        + '<button onclick="addMpPlan(' + i + ')" class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;border-color:rgba(255,51,102,.3);color:#fca5a5">+ Add Plan</button></div>';
+    }
+
+    function updateMpPlan(blockIdx, planIdx, key, val) {
+      if (!blocks[blockIdx].plans) blocks[blockIdx].plans = [];
+      if (!blocks[blockIdx].plans[planIdx]) blocks[blockIdx].plans[planIdx] = {};
+      blocks[blockIdx].plans[planIdx][key] = val;
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function updateMpPlanFeatures(blockIdx, planIdx, val) {
+      if (!blocks[blockIdx].plans) blocks[blockIdx].plans = [];
+      if (!blocks[blockIdx].plans[planIdx]) blocks[blockIdx].plans[planIdx] = {};
+      blocks[blockIdx].plans[planIdx].features = val.split('\n').filter(Boolean);
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function addMpPlan(blockIdx) {
+      if (!blocks[blockIdx].plans) blocks[blockIdx].plans = [];
+      blocks[blockIdx].plans.push({ name:'New Plan', price:'$29', per:'mo', featured:false, features:['Feature 1','Feature 2'] });
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+    function removeMpPlan(blockIdx, planIdx) {
+      if (!blocks[blockIdx].plans) return;
+      blocks[blockIdx].plans.splice(planIdx, 1);
+      dirty = true; markUnsaved(); render(); debouncePreview();
     }
 
     function renderFeatureItems(b, i) {
@@ -253,7 +387,8 @@
     }
 
     function addBlock(type) {
-      blocks.push(JSON.parse(JSON.stringify(DEFAULTS[type] || { type })));
+      const defaultConfig = DEFAULTS[type] || MP_DEFAULTS[type] || { type };
+      blocks.push(JSON.parse(JSON.stringify(defaultConfig)));
       dirty = true; markUnsaved();
       const newIdx = blocks.length - 1;
       openBlocks.add(newIdx);

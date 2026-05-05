@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 const layout = require('./admin-layout');
-const { BLOCK_TYPES, renderPageFromBlocks } = require('./block-renderer');
+const { BLOCK_TYPES, MP_BLOCK_TYPES, renderPageFromBlocks } = require('./block-renderer');
 const Anthropic = require('@anthropic-ai/sdk');
 const { getAdminOwners } = require('./admin-utils');
 
@@ -28,7 +28,9 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
   if (!v) return res.redirect('/admin/variants');
 
   const blocks = v.blocks || [];
+  const isMarketplaceMode = (blocks || []).some(b => b.type === 'mp_mode' || (b.type && b.type.startsWith('mp_')));
   const blockTypesJSON = JSON.stringify(BLOCK_TYPES);
+  const mpBlockTypesJSON = JSON.stringify(MP_BLOCK_TYPES);
   const blocksJSON = JSON.stringify(blocks);
 
   // Load VSL library for the VSL block dropdown
@@ -79,6 +81,19 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
           </div>
         </div>
 
+        <!-- Marketplace mode toggle -->
+        <div style="margin-bottom:16px;padding:12px 14px;background:#12121f;border:1px solid #1e1e30;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#e2e8f0">🛒 Marketplace Mode</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px">Switch page theme &amp; blocks for marketplace landing pages</div>
+          </div>
+          <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;cursor:pointer">
+            <input type="checkbox" id="mp-mode-toggle" ${isMarketplaceMode ? 'checked' : ''} onchange="toggleMarketplaceMode(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+            <span style="position:absolute;inset:0;background:${isMarketplaceMode ? '#ff3366' : '#1e1e30'};border-radius:24px;transition:.3s"></span>
+            <span style="position:absolute;top:3px;left:${isMarketplaceMode ? '23px' : '3px'};width:18px;height:18px;background:#fff;border-radius:50%;transition:.3s"></span>
+          </label>
+        </div>
+
         <div style="font-size:12px;color:#64748b;margin-bottom:16px">
           <span id="save-status">All changes saved</span>
         </div>
@@ -89,7 +104,14 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
         <!-- Add block section -->
         <div style="margin-top:20px">
           <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Add a block</div>
-          <div class="add-block-grid" id="block-type-buttons">${BLOCK_TYPES.map(t => `<button class="add-block-btn" onclick="addBlock('${t.type}')">${t.label}</button>`).join('')}</div>
+          <!-- Standard blocks (hidden in marketplace mode) -->
+          <div class="add-block-grid" id="block-type-buttons" style="${isMarketplaceMode ? 'display:none' : ''}">
+            ${BLOCK_TYPES.map(t => `<button class="add-block-btn" onclick="addBlock('${t.type}')">${t.label}</button>`).join('')}
+          </div>
+          <!-- Marketplace blocks (hidden in standard mode) -->
+          <div class="add-block-grid" id="mp-block-type-buttons" style="${isMarketplaceMode ? '' : 'display:none'}">
+            ${MP_BLOCK_TYPES.map(t => `<button class="add-block-btn" style="border-color:rgba(255,51,102,.3);color:#fca5a5" onclick="addBlock('${t.type}')">${t.label}</button>`).join('')}
+          </div>
         </div>
 
         <!-- VSL Panel -->
@@ -151,6 +173,8 @@ router.get('/:id/builder', requireAuth, async (req, res) => {
     <script>
     window.__BUILDER__ = ${JSON.stringify({
       blockTypes: BLOCK_TYPES,
+      mpBlockTypes: MP_BLOCK_TYPES,
+      marketplaceMode: isMarketplaceMode,
       blocks: v.blocks || [],
       vslLibrary: vslLibrary || [],
       variantVslId: v.vsl_id || null,

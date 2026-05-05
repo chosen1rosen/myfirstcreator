@@ -18,6 +18,19 @@ const BLOCK_TYPES = [
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
 
+const MP_BLOCK_TYPES = [
+  { type: 'mp_header',        label: '🔝 Header / Nav' },
+  { type: 'mp_hero',          label: '🎯 Hero / Main CTA' },
+  { type: 'mp_creator_scroll',label: '🎬 Creator Showcase Scroll' },
+  { type: 'mp_how_it_works',  label: '📋 How It Works (3 Cards)' },
+  { type: 'mp_feature',       label: '⚡️ Feature Card' },
+  { type: 'mp_community',     label: '💬 Community Section' },
+  { type: 'mp_pricing',       label: '💰 Pricing (Create.Post.Profit)' },
+  { type: 'mp_final_cta',     label: '🚀 Start Your Trial CTA' },
+  { type: 'mp_footer',        label: '🔻 Footer' },
+];
+module.exports.MP_BLOCK_TYPES = MP_BLOCK_TYPES;
+
 // ─── render a single block to HTML ──────────────────────────────────────────
 
 function renderBlock(block, testimonialData = []) {
@@ -36,7 +49,18 @@ function renderBlock(block, testimonialData = []) {
     case 'marketplace_creators': return renderMarketplaceCreators(block);
     case 'marketplace_categories': return renderMarketplaceCategories(block);
     case 'marketplace_lead': return renderMarketplaceLead(block);
-    default: return ''
+    // Marketplace blocks
+    case 'mp_mode': return ''; // sentinel — renders nothing
+    case 'mp_header': return renderMpHeader(block);
+    case 'mp_hero': return renderMpHero(block);
+    case 'mp_creator_scroll': return renderMpCreatorScroll(block);
+    case 'mp_how_it_works': return renderMpHowItWorks(block);
+    case 'mp_feature': return renderMpFeature(block);
+    case 'mp_community': return renderMpCommunity(block);
+    case 'mp_pricing': return renderMpPricing(block);
+    case 'mp_final_cta': return renderMpFinalCta(block);
+    case 'mp_footer': return renderMpFooter(block);
+    default: return '';
   }
 }
 
@@ -323,7 +347,8 @@ function renderCTABanner(b) {
 // ─── render full page from blocks ────────────────────────────────────────────
 
 function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
-  const bodyBlocks = (blocks || []).map(b => renderBlock(b, testimonialData)).join('\n');
+  const isMarketplace = (blocks || []).some(b => b.type === 'mp_mode' || (b.type && b.type.startsWith('mp_')));
+  const bodyBlocks = (blocks || []).filter(b => b.type !== 'mp_mode').map(b => renderBlock(b, testimonialData)).join('\n');
   // Extract CTA text from first email_capture or hero block for the signup JS
   const emailBlock = (blocks || []).find(b => b.type === 'email_capture');
   const ctaText = emailBlock?.cta_text || 'Get Instant Access →';
@@ -336,7 +361,7 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
   <title>MyFirstCreator.ai</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0d14;color:#e2e8f0;min-height:100vh}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:${isMarketplace ? '#0a0a0a' : '#0d0d14'};color:${isMarketplace ? '#ffffff' : '#e2e8f0'};min-height:100vh;overflow-x:hidden}
     .container{max-width:900px;margin:0 auto;padding:0 20px}
     .badge-pill{display:inline-block;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);color:#a78bfa;padding:6px 16px;border-radius:999px;font-size:13px;font-weight:600;margin-bottom:20px}
     .hero-headline{font-size:clamp(32px,6vw,56px);font-weight:800;line-height:1.1;margin-bottom:20px;background:linear-gradient(135deg,#fff 60%,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
@@ -395,6 +420,289 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
   </script>
 </body>
 </html>`;
+}
+
+// ─── Marketplace block renderers ─────────────────────────────────────────────────────
+
+function renderMpHeader(b) {
+  const logoText = b.logo_text || 'AI Creator Marketplace';
+  const ctaText = b.cta_text || 'Get Started Free';
+  const ctaUrl = b.cta_url || '#';
+  const navLinks = b.nav_links || [
+    { label: 'How It Works', href: '#how' },
+    { label: 'Browse Creators', href: '#creators' },
+    { label: 'Community', href: '#community' },
+    { label: 'Pricing', href: '#pricing' },
+  ];
+  return `
+  <nav style="position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);backdrop-filter:blur(12px);border-bottom:1px solid #1f1f1f;padding:0 40px;height:64px;display:flex;align-items:center;justify-content:space-between">
+    <a href="/" style="display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800;color:#fff;text-decoration:none">
+      <div style="width:32px;height:32px;background:#ff3366;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">🤖</div>
+      ${logoText}
+    </a>
+    <ul style="display:flex;gap:28px;list-style:none;margin:0;padding:0">
+      ${navLinks.map(l => `<li><a href="${l.href}" style="color:#9ca3af;text-decoration:none;font-size:14px;font-weight:500">${l.label}</a></li>`).join('')}
+    </ul>
+    <a href="${ctaUrl}" target="_blank" style="display:inline-block;background:#ff3366;color:#fff;padding:10px 22px;border-radius:50px;font-size:14px;font-weight:700;text-decoration:none">${ctaText}</a>
+  </nav>`;
+}
+
+function renderMpHero(b) {
+  const h1 = b.headline1 || 'Build and Scale Your';
+  const h2 = b.headline2 || 'AI Creator Income';
+  const h3 = b.headline3 || 'Starting Today';
+  const sub = b.subheadline || 'Browse thousands of AI creators, claim your affiliate link, and start earning commissions — all without creating content yourself.';
+  const ctaText = b.cta_text || 'Get Started For Free';
+  const ctaUrl = b.cta_url || '#';
+  const proof = b.social_proof || 'Join 50,000+ successful affiliates';
+  return `
+  <section style="padding:80px 40px 72px;text-align:center">
+    <div style="max-width:900px;margin:0 auto">
+      <h1 style="font-size:clamp(44px,7vw,80px);font-weight:900;line-height:1.05;letter-spacing:-2px;margin-bottom:24px">
+        ${h1}<br><span style="color:#ff3366">${h2}</span><br>${h3}
+      </h1>
+      <p style="color:#9ca3af;font-size:clamp(15px,2vw,18px);line-height:1.7;max-width:580px;margin:0 auto 40px">${sub}</p>
+      <a href="${ctaUrl}" target="_blank" style="display:inline-block;background:#ff3366;color:#fff;padding:18px 48px;border-radius:50px;font-size:18px;font-weight:700;text-decoration:none">${ctaText} →</a>
+      <div style="margin-top:12px;color:#6b7280;font-size:13px">${proof}</div>
+    </div>
+  </section>`;
+}
+
+function renderMpCreatorScroll(b) {
+  const items = b.items || [];
+  const cards = items.length ? items.map(item => {
+    const icon = item.engagement_type === 'views' ? '▶️' : '♥️';
+    const iconColor = item.engagement_type === 'views' ? '#fff' : '#ff3366';
+    let media = '';
+    if (item.media_type === 'video' && item.video) {
+      media = `<video src="${item.video}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;
+    } else if (item.image) {
+      media = `<img src="${item.image}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" alt="">`;
+    } else {
+      media = `<div style="position:absolute;inset:0;background:linear-gradient(135deg,#1a0a0f,#0a1a0a);display:flex;align-items:center;justify-content:center;font-size:56px">${item.emoji || '🤖'}</div>`;
+    }
+    return `
+    <div style="flex:0 0 200px;position:relative;border-radius:16px;overflow:hidden;aspect-ratio:9/16;background:#141414">
+      ${media}
+      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 40%)"></div>
+      ${item.engagement ? `<div style="position:absolute;bottom:14px;left:14px;display:flex;gap:6px;flex-wrap:wrap">
+        ${item.earnings ? `<span style="background:rgba(0,0,0,.6);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff;display:inline-flex;align-items:center;gap:4px"><span style="color:#22c55e">💰</span> ${item.earnings}</span>` : ''}
+        <span style="background:rgba(0,0,0,.6);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff;display:inline-flex;align-items:center;gap:4px"><span style="color:${iconColor}">${icon}</span> ${item.engagement}</span>
+      </div>` : ''}
+    </div>`;
+  }).join('') : [['#1a0a0f','💃','2.1M','$12.4K'],['#0a0f1a','🤖','780K','$5.8K'],['#1a0a1a','👑','1.2M','$8.1K'],['#0f1a0a','🎭','340K','$3.2K'],['#1a1a0a','🔥','920K','$15.3K'],['#0a1a1a','💎','1.8M','$21.7K']].map(([bg,emoji,lk,earn]) => `
+    <div style="flex:0 0 200px;position:relative;border-radius:16px;overflow:hidden;aspect-ratio:9/16;background:#141414">
+      <div style="position:absolute;inset:0;background:${bg};display:flex;align-items:center;justify-content:center;font-size:56px">${emoji}</div>
+      <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 40%)"></div>
+      <div style="position:absolute;bottom:14px;left:14px;display:flex;gap:6px">
+        <span style="background:rgba(0,0,0,.6);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff"><span style="color:#22c55e">💰</span> ${earn}</span>
+        <span style="background:rgba(0,0,0,.6);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:700;color:#fff"><span style="color:#ff3366">♥️</span> ${lk}</span>
+      </div>
+    </div>`).join('');
+  return `
+  <section style="padding:0 0 80px;overflow:hidden">
+    <div style="display:flex;gap:12px;padding:0 40px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch">
+      ${cards}
+    </div>
+  </section>`;
+}
+
+function renderMpHowItWorks(b) {
+  const title = b.title || 'HOW IT WORKS';
+  const cards = [
+    { title: b.card1_title || 'BROWSE YOUR CREATOR', text: b.card1_text || 'Explore thousands of AI-powered creators across every niche. Pick one that matches your audience — no experience required.', color: b.card1_color || '#ff3366', mockup: 'browse' },
+    { title: b.card2_title || 'SHARE YOUR LINK', text: b.card2_text || 'Get your unique affiliate link instantly. Post it on TikTok, Instagram, X, YouTube, or email — anywhere your audience lives.', color: b.card2_color || '#ff3366', mockup: 'share' },
+    { title: b.card3_title || 'GET PAID', text: b.card3_text || 'Earn commissions on every signup and sale your links generate. Paid weekly — directly to your bank or PayPal.', color: b.card3_color || '#22c55e', mockup: 'paid' },
+  ];
+  const mockupFor = (type, color) => {
+    if (type === 'browse') return `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+      ${['\ud83d\udc69\u200d\ud83e\uddb0','\ud83d\udc71\u200d\u2640\ufe0f','\ud83d\udc69','\ud83d\udc69\u200d\ud83e\uddb3','\ud83d\udc69\u200d\ud83e\uddb1'].map(e => `<div style="width:48px;height:48px;background:#1a1a1a;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid #2a2a2a">${e}</div>`).join('')}
+      <div style="width:100%;height:32px;background:${color};border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;margin-top:8px">Choose a Creator</div>
+    </div>`;
+    if (type === 'share') return `<div style="display:flex;gap:12px;align-items:flex-end">
+      ${['📱','🎯','🔗'].map((e,i) => `<div style="width:56px;height:96px;background:#141414;border-radius:12px;border:2px solid #1f1f1f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:${i===1?'28px':'22px'};transform:${i===0?'rotate(-8deg)':i===2?'rotate(8deg)':'scale(1.1)'}">${e}</div>`).join('')}
+    </div>`;
+    return `<div style="background:#0d1a0d;border:1px solid #1a2e1a;border-radius:12px;padding:14px 16px;min-width:220px">
+      <div style="font-size:24px;font-weight:900;color:#22c55e;margin-bottom:8px">$21,704.23</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        ${[['$2,113','Referrals'],['$731','Tips'],['$5,300','Bonuses'],['$13,560','Commissions']].map(([v,l])=>`<div style="background:#0a1a0a;border-radius:6px;padding:8px"><div style="font-size:13px;font-weight:700;color:#22c55e">${v}</div><div style="font-size:10px;color:#6b7280">${l}</div></div>`).join('')}
+      </div>
+    </div>`;
+  };
+  return `
+  <section style="padding:80px 40px;background:#080810" id="how">
+    <h2 style="text-align:center;font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:white;margin-bottom:48px">${title}</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;max-width:1100px;margin:0 auto">
+      ${cards.map(c => `
+      <div style="background:#141414;border:1px solid #1f1f1f;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:32px 24px 16px;background:#0f0f0f;display:flex;align-items:center;justify-content:center;min-height:180px">${mockupFor(c.mockup, c.color)}</div>
+        <div style="padding:24px 24px 28px;display:flex;flex-direction:column;flex:1">
+          <div style="width:40px;height:40px;border-radius:50%;background:${c.color};display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;font-weight:700;margin-bottom:14px">→</div>
+          <div style="font-size:clamp(18px,2.5vw,24px);font-weight:900;letter-spacing:-0.5px;margin-bottom:10px;line-height:1.1">${c.title}</div>
+          <p style="font-size:14px;color:#6b7280;line-height:1.6;margin:0">${c.text}</p>
+        </div>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
+function renderMpFeature(b) {
+  const badge = b.badge || 'FEATURE';
+  const title = b.title || 'Feature Title';
+  const text = b.text || 'Feature description goes here.';
+  const text2 = b.text2 || '';
+  const ctaText = b.cta_text || 'Learn More →';
+  const ctaUrl = b.cta_url || '#';
+  const imgSide = b.image_side || 'left';
+  const glow = b.glow !== false;
+  const pinkTitle = b.pink_title !== false;
+  const glowStyle = glow ? 'border-color:rgba(255,51,102,.35);box-shadow:0 0 60px rgba(255,51,102,.08)' : '';
+  const imgBlock = `
+    <div style="background:#0f0f0f;display:flex;align-items:center;justify-content:center;padding:32px;min-height:320px;overflow:hidden">
+      ${b.image_url
+        ? `<img src="${b.image_url}" style="max-width:100%;border-radius:12px;object-fit:cover" alt="">`
+        : `<div style="background:#141414;border:1px solid #1f1f1f;border-radius:16px;padding:24px;text-align:center;min-width:200px"><div style="font-size:48px;margin-bottom:12px">🤖</div><div style="color:#475569;font-size:12px">Add an image URL in the block settings</div></div>`}
+    </div>`;
+  const textBlock = `
+    <div style="padding:48px 40px;display:flex;flex-direction:column;gap:16px">
+      <span style="display:inline-block;background:rgba(255,51,102,.12);border:1px solid rgba(255,51,102,.3);color:#ff3366;border-radius:20px;padding:5px 14px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;align-self:flex-start">${badge}</span>
+      <div style="font-size:clamp(22px,3vw,36px);font-weight:900;line-height:1.1;letter-spacing:-1px">${pinkTitle ? `<span style="color:#ff3366">${title}</span>` : title}</div>
+      <p style="color:#9ca3af;font-size:15px;line-height:1.7;margin:0">${text}</p>
+      ${text2 ? `<p style="color:#9ca3af;font-size:15px;line-height:1.7;margin:0">${text2}</p>` : ''}
+      <a href="${ctaUrl}" target="_blank" style="display:inline-block;background:#ff3366;color:#fff;padding:14px 32px;border-radius:50px;font-size:15px;font-weight:700;text-decoration:none;align-self:flex-start">${ctaText}</a>
+    </div>`;
+  return `
+  <section style="padding:0 40px 16px">
+    <div style="background:#141414;border:1px solid #1f1f1f;border-radius:20px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;${glowStyle}">
+      ${imgSide === 'left' ? imgBlock + textBlock : textBlock + imgBlock}
+    </div>
+  </section>`;
+}
+
+function renderMpCommunity(b) {
+  const h1 = b.headline1 || "Don't Build Alone.";
+  const h2 = b.headline2 || 'Join the Inner Circle.';
+  const text = b.text || "Connect with top affiliate earners, share what's working, and get exclusive strategies from our private creator community.";
+  const ctaTxt = b.cta_text || 'Join the Discord →';
+  const ctaUrl = b.cta_url || '#';
+  return `
+  <section style="padding:0 40px 80px">
+    <div style="background:#161616;border:1px solid #1f1f1f;border-radius:20px;display:grid;grid-template-columns:1fr 1fr;align-items:center;overflow:hidden">
+      <div style="padding:56px 48px;display:flex;flex-direction:column;gap:20px">
+        <div>
+          <div style="font-size:clamp(28px,4vw,48px);font-weight:900;line-height:1.05;letter-spacing:-1px">${h1}</div>
+          <div style="font-size:clamp(28px,4vw,48px);font-weight:900;line-height:1.05;letter-spacing:-1px;color:#ff3366">${h2}</div>
+        </div>
+        <p style="color:#9ca3af;font-size:15px;line-height:1.7;margin:0">${text}</p>
+        <a href="${ctaUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:#fff;padding:14px 28px;border-radius:50px;font-size:16px;font-weight:600;text-decoration:none;border:2px solid #5865f2;align-self:flex-start">${ctaTxt}</a>
+      </div>
+      <div style="background:#313338;height:100%;min-height:360px;display:flex;overflow:hidden">
+        <div style="width:180px;background:#2b2d31;padding:16px 0;flex-shrink:0">
+          <div style="width:40px;height:40px;border-radius:50%;background:#ff3366;display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto 16px">🤖</div>
+          ${['# start-here','# affiliates','# wins','# strategies','# creator-tips','# scaling'].map((c,i) => `<div style="padding:4px 8px 4px 14px;font-size:12px;color:${i===0?'#dbdee1':'#949ba4'};border-radius:4px;margin:2px 6px;${i===0?'background:#404249':''}">${c}</div>`).join('')}
+        </div>
+        <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden">
+          <div style="font-size:13px;font-weight:700;color:#f2f3f5;border-bottom:1px solid #3f4147;padding-bottom:10px"># start-here</div>
+          <div style="display:flex;gap:10px">
+            <div style="width:32px;height:32px;border-radius:50%;background:#5865f2;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px">😎</div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#f2f3f5;margin-bottom:2px">Alex_Affiliate <span style="font-size:10px;color:#949ba4;font-weight:400">Today at 9:41 AM</span></div>
+              <div style="font-size:12px;color:#dbdee1;line-height:1.4">Just hit my first $5k month! 🚀</div>
+              <div style="background:#1e1f22;border-radius:8px;padding:10px;margin-top:6px;border-left:3px solid #ff3366">
+                <div style="font-size:18px;font-weight:900;color:#22c55e">$5,247.00</div>
+                <div style="font-size:10px;color:#949ba4;margin-top:2px">Monthly earnings</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderMpPricing(b) {
+  const headline = b.headline || 'Create. Post. Profit.';
+  const sub = b.subheadline || 'Join the platform that pays affiliates every week';
+  const plans = b.plans && b.plans.length ? b.plans : [
+    { name: 'Starter Affiliate', price: 'Free',   per: 'forever', featured: false, features: ['Browse all creators', 'Get your affiliate link', 'Basic analytics', 'Email support'] },
+    { name: 'Pro Affiliate',     price: '$29',    per: 'mo',      featured: true,  features: ['Everything in Starter', 'Advanced analytics', 'Priority creator access', 'Weekly payout', 'Account manager'] },
+    { name: 'Agency',            price: '$79',    per: 'mo',      featured: false, features: ['Everything in Pro', 'Manage 5 sub-affiliates', 'White-label dashboard', 'API access'] },
+    { name: 'Enterprise',        price: 'Custom', per: '',        featured: false, features: ['Everything in Agency', 'Unlimited sub-affiliates', 'Custom integrations', 'SLA guarantee'] },
+  ];
+  const ctaUrl = b.cta_url || '#';
+  const pricingCards = plans.map((plan, i) => {
+    const isFeat = plan.featured || i === 1;
+    const price = plan.price || 'Free';
+    const per = plan.per || '';
+    return `
+    <div style="background:#141414;border:1px solid ${isFeat ? 'rgba(255,51,102,.5)' : '#1f1f1f'};border-radius:20px;padding:28px 24px;display:flex;flex-direction:column;gap:20px;position:relative;${isFeat ? 'box-shadow:0 0 60px rgba(255,51,102,.1)' : ''}">
+      ${isFeat ? `<div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);background:#ff3366;color:#fff;padding:6px 18px;border-radius:50px;font-size:12px;font-weight:800;white-space:nowrap">Most Popular</div>` : ''}
+      <div style="font-size:18px;font-weight:700">${plan.name}</div>
+      <div style="display:flex;align-items:baseline;gap:4px;font-weight:900">
+        ${price === 'Free' || price === 'Custom'
+          ? `<span style="font-size:36px">${price}</span>`
+          : `<span style="font-size:48px">${price}</span><span style="font-size:16px;color:#6b7280">/${per}</span>`}
+      </div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:12px;flex:1;padding:0;margin:0">
+        ${(plan.features || []).map(f => `<li style="display:flex;align-items:flex-start;gap:10px;font-size:14px;color:#9ca3af"><span style="color:#ff3366;font-weight:900;flex-shrink:0">✓</span>${f}</li>`).join('')}
+      </ul>
+      <a href="${ctaUrl}" target="_blank" style="width:100%;display:block;text-align:center;padding:14px;border-radius:50px;font-size:15px;font-weight:700;text-decoration:none;${isFeat ? 'background:#ff3366;color:#fff' : 'background:#1f1f1f;color:#fff'}">Try It Free</a>
+    </div>`;
+  }).join('');
+  return `
+  <section style="padding:80px 40px;text-align:center" id="pricing">
+    <h2 style="font-size:clamp(32px,5vw,56px);font-weight:900;letter-spacing:-1px;margin-bottom:16px">${headline}</h2>
+    <p style="color:#9ca3af;font-size:16px;margin-bottom:48px">${sub}</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:start;max-width:1100px;margin:0 auto">
+      ${pricingCards}
+    </div>
+  </section>`;
+}
+
+function renderMpFinalCta(b) {
+  const headline = b.headline || 'Start Your AI Creator\nIncome Journey Today';
+  const sub = b.subheadline || 'Join 50,000+ affiliates already earning commissions every week';
+  const ctaText = b.cta_text || 'Start Your Free Trial';
+  const ctaUrl = b.cta_url || '#';
+  const trustText = b.trust_text || 'No credit card required • Cancel anytime';
+  return `
+  <section style="padding:100px 40px;text-align:center;border-top:1px solid #1f1f1f">
+    <h2 style="font-size:clamp(32px,5vw,60px);font-weight:900;letter-spacing:-2px;margin-bottom:16px;line-height:1.1">${headline.replace(/\n/g, '<br>')}</h2>
+    <p style="color:#9ca3af;font-size:16px;margin-bottom:36px">${sub}</p>
+    <a href="${ctaUrl}" target="_blank" style="display:inline-block;background:#ff3366;color:#fff;padding:20px 52px;border-radius:50px;font-size:20px;font-weight:700;text-decoration:none">${ctaText}</a>
+    <p style="color:#4b5563;font-size:13px;margin-top:16px">${trustText}</p>
+  </section>`;
+}
+
+function renderMpFooter(b) {
+  const logoText = b.logo_text || 'AI Creator Marketplace';
+  const tagline = b.tagline || 'Build and Scale Your AI Creator Income';
+  const ctaUrl = b.cta_url || '#';
+  return `
+  <footer style="border-top:1px solid #1f1f1f;padding:56px 40px 32px;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:40px">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:16px;font-weight:800;color:#fff;margin-bottom:12px">
+        <div style="width:28px;height:28px;background:#ff3366;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px">🤖</div>
+        ${logoText}
+      </div>
+      <p style="color:#9ca3af;font-size:14px;font-weight:600;margin:0">${tagline}</p>
+    </div>
+    <div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:16px">Platform</div>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px">
+        ${[['Features','/features'],['Pricing','/pricing'],['Browse Creators','/creators'],['Community','/community']].map(([l,h])=>`<li><a href="${ctaUrl}${h}" target="_blank" style="color:#9ca3af;text-decoration:none;font-size:14px">${l}</a></li>`).join('')}
+      </ul>
+    </div>
+    <div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:16px">Legal</div>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px">
+        ${[['Terms of Use','/terms'],['Privacy Policy','/privacy'],['Affiliate Program','/affiliates']].map(([l,h])=>`<li><a href="${ctaUrl}${h}" target="_blank" style="color:#9ca3af;text-decoration:none;font-size:14px">${l}</a></li>`).join('')}
+      </ul>
+    </div>
+  </footer>
+  <div style="border-top:1px solid #1f1f1f;padding:20px 40px;text-align:center;color:#374151;font-size:12px">
+    <p>© ${new Date().getFullYear()} AI Creator Marketplace · All rights reserved</p>
+  </div>`;
 }
 
 function renderHowItWorks(b) {
@@ -649,4 +957,4 @@ window['mlSubmit_${uid}'] = async function(e) {
 <\/script>`;
 }
 
-module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES };
+module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES, MP_BLOCK_TYPES };

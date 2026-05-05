@@ -38,6 +38,9 @@ app.use((req, res, next) => {
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);
 app.use('/admin/events', addcalRouter);
+
+const marketplaceRouter = require('./routes/marketplace');
+app.use('/api/marketplace', marketplaceRouter);
 app.use('/superadmin', superAdminRouter);
 
 // Static files — fallback for CSS/JS/images and index.html when no variant is set

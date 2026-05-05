@@ -21,6 +21,9 @@
         { title:'Go Viral', description:'Your AI creator stays 100% consistent across every post, building a real audience fast.', media_type:'image', image:'', video:'', color:'#ff3366' },
         { title:'Get Paid', description:'Earn through fan subscriptions, brand deals, and automated revenue streams — you keep 60%.', media_type:'image', image:'', video:'', color:'#22c55e' }
       ]},
+      marketplace_creators: { type:'marketplace_creators', title:'Browse AI Creators', subtitle:'Choose the perfect creator to manage and monetize', label:'🤖 Featured Creators', limit:12, cta_text:'View All Creators →', cta_link:'', marketplace_url:'https://aicreatormarketplace.com' },
+      marketplace_categories: { type:'marketplace_categories', title:'Browse by Category', subtitle:'Find your niche and start earning', label:'🗂 Creator Categories', marketplace_url:'https://aicreatormarketplace.com' },
+      marketplace_lead: { type:'marketplace_lead', title:'Claim Your AI Creator', subtitle:'Join thousands already managing AI creators and earning through Fanplace.', label:'🎯 Free to Start', cta_text:'Claim My Creator →', placeholder:'Enter your email address', campaign_id:'', bg_color:'transparent' },
       creator_scroll: { type:'creator_scroll', title:'Meet Your AI Creators', subtitle:'Choose the creator you want to manage', items:[
         { media_type:'image', image:'', video:'', engagement:'2.1M', engagement_type:'likes' },
         { media_type:'image', image:'', video:'', engagement:'780K', engagement_type:'likes' },
@@ -162,6 +165,9 @@
         case 'html': return `<div class="field"><label>Custom HTML</label><textarea rows="8" onchange="updateField(${i},'content',this.value)">${esc(b.content||'')}</textarea></div>`;
         case 'how_it_works': return renderHowItWorksForm(b, i);
         case 'creator_scroll': return renderCreatorScrollForm(b, i);
+        case 'marketplace_creators': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('limit','Creators Per Page','number') + f('cta_text','CTA Button Text (optional)') + f('cta_link','CTA Button URL') + f('marketplace_url','Marketplace Base URL');
+        case 'marketplace_categories': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('marketplace_url','Marketplace Base URL');
+        case 'marketplace_lead': return f('title','Title') + f('subtitle','Subtitle') + f('label','Section Label') + f('cta_text','Button Text') + f('placeholder','Email Placeholder') + f('campaign_id','Campaign ID (optional)') + f('bg_color','Background Color','text','placeholder="transparent"');
         default: return '<p style="color:#64748b;font-size:13px">No options for this block type.</p>';
       }
     }

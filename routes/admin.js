@@ -1038,7 +1038,28 @@ router.get('/settings', requireAuth, async (req, res) => {
         <button type="submit" class="btn btn-primary">Save Settings</button>
       </form>
     </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-title">🤖 AI Creator Marketplace</div>
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px">Connect to your aicreatormarketplace.com whitelabel site to enable the AI Creators Grid, Category Browser, and Marketplace Lead Form blocks in the page builder.</p>
+      <form method="POST" action="/admin/settings/marketplace">
+        <div class="form-group">
+          <label>Site Token</label>
+          <input type="password" name="marketplace_site_token" value="${s.marketplace_site_token || ''}" placeholder="Paste your site token from aicreatormarketplace.com" autocomplete="off">
+          <div style="font-size:12px;color:#475569;margin-top:4px">Stored securely. Never exposed to the browser.</div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Token</button>
+        ${s.marketplace_site_token ? '<span style="color:#6ee7b7;font-size:13px;margin-left:12px">✅ Token saved</span>' : ''}
+      </form>
+    </div>
   `, 'settings'));
+});
+
+router.post('/settings/marketplace', requireAuth, async (req, res) => {
+  const { marketplace_site_token } = req.body;
+  if (marketplace_site_token !== undefined) {
+    await supabase.from('settings').upsert({ key: 'marketplace_site_token', value: marketplace_site_token.trim(), updated_at: new Date().toISOString() });
+  }
+  res.redirect('/admin/settings');
 });
 
 router.post('/settings', requireAuth, async (req, res) => {

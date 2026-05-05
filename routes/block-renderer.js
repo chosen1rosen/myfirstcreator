@@ -12,6 +12,9 @@ const BLOCK_TYPES = [
   { type: 'html',          label: '💻 Custom HTML' },
   { type: 'how_it_works',  label: '📋 How It Works' },
   { type: 'creator_scroll', label: '🎬 Creator Scroll' },
+  { type: 'marketplace_creators', label: '🤖 AI Creators Grid' },
+  { type: 'marketplace_categories', label: '🗂 Category Browser' },
+  { type: 'marketplace_lead', label: '🎯 Marketplace Lead Form' },
 ];
 module.exports.BLOCK_TYPES = BLOCK_TYPES;
 
@@ -30,6 +33,9 @@ function renderBlock(block, testimonialData = []) {
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
     case 'how_it_works': return renderHowItWorks(block);
     case 'creator_scroll': return renderCreatorScroll(block);
+    case 'marketplace_creators': return renderMarketplaceCreators(block);
+    case 'marketplace_categories': return renderMarketplaceCategories(block);
+    case 'marketplace_lead': return renderMarketplaceLead(block);
     default: return ''
   }
 }
@@ -466,6 +472,181 @@ function renderCreatorScroll(b) {
       ${cards}
     </div>
   </section>`;
+}
+
+function renderMarketplaceCreators(b) {
+  const uid = 'mc_' + Math.random().toString(36).slice(2, 8);
+  const limit = parseInt(b.limit) || 12;
+  const mktUrl = b.marketplace_url || 'https://aicreatormarketplace.com';
+  const skeletons = Array(6).fill('<div style="background:#12121f;border-radius:16px;aspect-ratio:3/4;animation:mfc-pulse 1.5s ease-in-out infinite"></div>').join('');
+
+  return `
+<section style="padding:72px 20px;background:#0d0d14">
+  <style>
+    @keyframes mfc-pulse{0%,100%{opacity:.4}50%{opacity:.8}}
+    .mc-card{background:#12121f;border:1px solid #1e1e30;border-radius:16px;overflow:hidden;text-decoration:none;display:block;transition:.2s}
+    .mc-card:hover{border-color:rgba(124,58,237,.5);transform:translateY(-3px)}
+    .mc-card img,.mc-img-ph{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:#1a1a2e}
+    .mc-img-ph{display:flex;align-items:center;justify-content:center;font-size:56px}
+    .mc-info{padding:14px}
+    .mc-name{font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:6px}
+    .mc-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;margin:2px}
+  </style>
+  <div style="max-width:1100px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:40px">
+      ${b.label ? `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;margin-bottom:12px">${b.label}</div>` : ''}
+      <h2 style="font-size:clamp(26px,4vw,42px);font-weight:800;color:#f1f5f9;margin-bottom:12px">${b.title || 'Browse AI Creators'}</h2>
+      ${b.subtitle ? `<p style="color:#94a3b8;font-size:17px;max-width:600px;margin:0 auto">${b.subtitle}</p>` : ''}
+    </div>
+    <div id="cats-${uid}" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:32px"></div>
+    <div id="grid-${uid}" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:20px">${skeletons}</div>
+    <div style="text-align:center;margin-top:36px">
+      <button id="more-${uid}" style="display:none;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.4);color:#a78bfa;padding:13px 32px;border-radius:999px;font-size:15px;font-weight:700;cursor:pointer" onclick="mcLoadMore_${uid}()">Load More</button>
+    </div>
+    ${b.cta_text ? `<div style="text-align:center;margin-top:48px"><a href="${b.cta_link || mktUrl}" target="_blank" style="display:inline-block;padding:16px 40px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;text-decoration:none;border-radius:12px;font-size:16px;font-weight:700">${b.cta_text}</a></div>` : ''}
+  </div>
+</section>
+<script>
+(function(){
+  var page=1, activeCat=null;
+  var mktUrl='${mktUrl}';
+
+  function chipHTML(id, label, active) {
+    return '<button onclick="mcFilter_${uid}(\''+id+'\',this)" style="background:'+(active?'rgba(124,58,237,.2)':'#1a1a2e')+';border:1px solid '+(active?'rgba(124,58,237,.5)':'#2d2d4a')+';color:'+(active?'#a78bfa':'#94a3b8')+';padding:8px 18px;border-radius:999px;font-size:13px;cursor:pointer;transition:.15s">'+label+'</button>';
+  }
+
+  function renderCards(creators, append) {
+    var grid = document.getElementById('grid-${uid}');
+    if (!creators.length && !append) { grid.innerHTML='<div style="text-align:center;color:#475569;padding:48px;grid-column:1/-1">No creators found</div>'; return; }
+    var html = creators.map(function(c) {
+      var imgEl = (c.image&&c.image.url) ? '<img src="'+c.image.url+'" alt="'+(c.name||c.ident)+'" loading="lazy" style="width:100%;aspect-ratio:3/4;object-fit:cover;display:block">' : '<div class="mc-img-ph">🤖</div>';
+      var badges = (c.badges||[]).slice(0,2).map(function(bg){ return '<span class="mc-badge" style="background:'+bg.color+'22;color:'+bg.color+'">'+bg.value+'</span>'; }).join('');
+      return '<a href="'+mktUrl+'/creators/'+c.slug+'" target="_blank" class="mc-card">'+imgEl+'<div class="mc-info"><div class="mc-name">'+(c.name||c.ident)+'</div>'+(badges?'<div>'+badges+'</div>':'')+'</div></a>';
+    }).join('');
+    if (append) grid.insertAdjacentHTML('beforeend', html);
+    else grid.innerHTML = html;
+  }
+
+  function load(append) {
+    var grid = document.getElementById('grid-${uid}');
+    if (!append) grid.innerHTML = '${skeletons.replace(/\/g, '\\')}';
+    var url='/api/marketplace/creators?perPage=${limit}&page='+page;
+    if (activeCat) url+='&category='+encodeURIComponent(activeCat);
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      renderCards(d.data||[], append);
+      document.getElementById('more-${uid}').style.display = d.links&&d.links.next ? 'inline-block' : 'none';
+    }).catch(function(){ grid.innerHTML='<div style="text-align:center;color:#475569;padding:48px;grid-column:1/-1">Failed to load creators</div>'; });
+  }
+
+  function loadCats() {
+    fetch('/api/marketplace/categories').then(function(r){return r.json();}).then(function(d){
+      var cats=document.getElementById('cats-${uid}');
+      var items=d.data||[];
+      if(!items.length) return;
+      cats.innerHTML = chipHTML('', 'All', true) + items.map(function(c){ return chipHTML(c.id, c.name, false); }).join('');
+    });
+  }
+
+  window['mcFilter_${uid}'] = function(catId, btn) {
+    activeCat = catId || null; page = 1;
+    document.querySelectorAll('#cats-${uid} button').forEach(function(b){ b.style.background='#1a1a2e'; b.style.borderColor='#2d2d4a'; b.style.color='#94a3b8'; });
+    btn.style.background='rgba(124,58,237,.2)'; btn.style.borderColor='rgba(124,58,237,.5)'; btn.style.color='#a78bfa';
+    load(false);
+  };
+  window['mcLoadMore_${uid}'] = function(){ page++; load(true); };
+
+  loadCats();
+  load(false);
+})();
+<\/script>`;
+}
+
+function renderMarketplaceCategories(b) {
+  const uid = 'mcat_' + Math.random().toString(36).slice(2, 8);
+  const mktUrl = b.marketplace_url || 'https://aicreatormarketplace.com';
+  const skeletons = Array(6).fill('<div style="background:#12121f;border-radius:14px;height:130px;animation:mfc-pulse 1.5s ease-in-out infinite"></div>').join('');
+
+  return `
+<section style="padding:72px 20px;background:#0e0e1c">
+  <div style="max-width:1100px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:40px">
+      ${b.label ? `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#06b6d4;margin-bottom:12px">${b.label}</div>` : ''}
+      <h2 style="font-size:clamp(24px,4vw,40px);font-weight:800;color:#f1f5f9;margin-bottom:12px">${b.title || 'Browse by Category'}</h2>
+      ${b.subtitle ? `<p style="color:#94a3b8;font-size:16px">${b.subtitle}</p>` : ''}
+    </div>
+    <div id="catgrid-${uid}" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px">${skeletons}</div>
+  </div>
+</section>
+<script>
+(function(){
+  var mktUrl='${mktUrl}';
+  fetch('/api/marketplace/categories').then(function(r){return r.json();}).then(function(d){
+    var cats=d.data||[];
+    var grid=document.getElementById('catgrid-${uid}');
+    if(!cats.length){grid.innerHTML='<p style="color:#475569;text-align:center;grid-column:1/-1">No categories found</p>';return;}
+    grid.innerHTML=cats.map(function(cat){
+      var bg=(cat.images&&cat.images[0]) ? 'background:linear-gradient(rgba(0,0,0,.45),rgba(0,0,0,.7)),url('+cat.images[0].url+') center/cover' : 'background:linear-gradient(135deg,#1a1a2e,#2d2d4a)';
+      return '<a href="'+mktUrl+'/categories/'+cat.slug+'" target="_blank" style="display:flex;flex-direction:column;justify-content:flex-end;min-height:130px;'+bg+';border-radius:14px;padding:16px;text-decoration:none;border:1px solid #1e1e30;transition:.2s" onmouseover="this.style.borderColor=\'rgba(124,58,237,.5)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'#1e1e30\';this.style.transform=\'none\'">'
+        +'<div style="font-size:14px;font-weight:700;color:#f1f5f9">'+cat.name+'</div>'
+        +(cat.creatorsCount?'<div style="font-size:12px;color:#94a3b8;margin-top:3px">'+cat.creatorsCount+' creators</div>':'')
+        +'</a>';
+    }).join('');
+  }).catch(function(){ document.getElementById('catgrid-${uid}').innerHTML='<p style="color:#475569;text-align:center;grid-column:1/-1">Failed to load</p>'; });
+})();
+<\/script>`;
+}
+
+function renderMarketplaceLead(b) {
+  const uid = 'mlead_' + Math.random().toString(36).slice(2, 8);
+  const bg = b.bg_color || 'transparent';
+
+  return `
+<section style="padding:72px 20px;background:${bg};text-align:center">
+  <div class="signup-box" style="max-width:480px;margin:0 auto;background:#12121f;border:1px solid rgba(124,58,237,.3);border-radius:20px;padding:48px 32px;box-shadow:0 0 80px rgba(124,58,237,.1)">
+    ${b.label ? `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#7c3aed;margin-bottom:12px">${b.label}</div>` : ''}
+    ${b.title ? `<h2 style="font-size:clamp(22px,4vw,32px);font-weight:800;color:#f1f5f9;margin-bottom:10px">${b.title}</h2>` : ''}
+    ${b.subtitle ? `<p style="color:#64748b;font-size:15px;margin-bottom:28px;line-height:1.6">${b.subtitle}</p>` : ''}
+    <form id="form-${uid}" onsubmit="mlSubmit_${uid}(event)">
+      <input type="email" id="email-${uid}" placeholder="${b.placeholder || 'Enter your email address'}" required
+        style="width:100%;background:#1a1a2e;border:1px solid #2d2d4a;color:#e2e8f0;padding:14px 16px;border-radius:10px;font-size:15px;margin-bottom:12px;outline:none;font-family:inherit">
+      <button type="submit" id="btn-${uid}"
+        style="width:100%;padding:16px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:white;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit">
+        ${b.cta_text || 'Claim My Creator →'}
+      </button>
+    </form>
+    <div id="msg-${uid}" style="display:none;margin-top:16px;padding:14px 18px;border-radius:10px;font-size:14px;font-weight:500"></div>
+    <div style="font-size:12px;color:#475569;margin-top:12px">🔒 No spam. Free to start.</div>
+  </div>
+</section>
+<script>
+window['mlSubmit_${uid}'] = async function(e) {
+  e.preventDefault();
+  var btn=document.getElementById('btn-${uid}');
+  var msg=document.getElementById('msg-${uid}');
+  var email=document.getElementById('email-${uid}').value.trim();
+  btn.disabled=true; btn.textContent='One moment...';
+  try {
+    var payload={email:email};
+    ${b.campaign_id ? `payload.campaign_id='${b.campaign_id}';` : ''}
+    var res=await fetch('/api/marketplace/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var data=await res.json();
+    msg.style.display='block';
+    if(res.ok||res.status===201){
+      msg.style.background='#064e3b';msg.style.color='#6ee7b7';msg.style.border='1px solid #065f46';
+      msg.textContent="🎉 You're in! Check your email for next steps.";
+      document.getElementById('form-${uid}').style.display='none';
+    } else {
+      msg.style.background='#7f1d1d';msg.style.color='#fca5a5';msg.style.border='1px solid #991b1b';
+      msg.textContent=data.message||data.error||'Something went wrong. Please try again.';
+      btn.disabled=false; btn.textContent='${b.cta_text || 'Claim My Creator →'}';
+    }
+  } catch(err) {
+    msg.style.display='block';msg.style.background='#7f1d1d';msg.style.color='#fca5a5';msg.style.border='1px solid #991b1b';
+    msg.textContent='Connection error. Please try again.';
+    btn.disabled=false; btn.textContent='${b.cta_text || 'Claim My Creator →'}';
+  }
+};
+<\/script>`;
 }
 
 module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES };

@@ -107,6 +107,15 @@ function domainRotKey(domainId, suffix) {
   return `d${domainId}_rot_${suffix}`;
 }
 
+/**
+ * Applies .eq('domain_id', domainId) only when domainId is non-null.
+ * Pass null to skip the filter (migration not yet run).
+ */
+function scopeDomain(query, domainId) {
+  if (!domainId) return query;
+  return query.eq('domain_id', domainId);
+}
+
 module.exports = {
   getAdminAccounts,
   getAdminOwners,
@@ -116,4 +125,5 @@ module.exports = {
   removeLinkFromAdmin,
   rotKey,
   domainRotKey,
+  scopeDomain,
 };

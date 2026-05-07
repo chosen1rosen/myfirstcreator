@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
-const { getAdminOwners, rotKey, domainRotKey } = require('./admin-utils');
+const { getAdminOwners, rotKey, domainRotKey, scopeDomain } = require('./admin-utils');
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -15,8 +15,8 @@ async function setSetting(key, value) {
 
 function requireAuth(req, res, next) {
   if (!req.session?.admin) return res.redirect('/admin/login');
-  req.currentDomainId = req.session.currentDomainId || 1;
-  req.currentDomain = req.session.currentDomain || 'myfirstcreator.ai';
+  req.currentDomainId = req.domainMigrated ? (req.session.currentDomainId || 1) : null;
+  req.currentDomain = req.domainMigrated ? (req.session.currentDomain || 'myfirstcreator.ai') : 'myfirstcreator.ai';
   next();
 }
 
@@ -98,8 +98,9 @@ router.get('/', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const owners = getAdminOwners(adminId);
   const domainId = req.currentDomainId;
-  const { data: variants } = await supabase.from('variants').select('*')
-    .in('owner', owners).eq('domain_id', domainId).order('created_at', { ascending: false });
+  const { data: variants } = await scopeDomain(
+    supabase.from('variants').select('*').in('owner', owners), domainId
+  ).order('created_at', { ascending: false });
 
   // Stats per variant
   const { data: visitRows } = await supabase.from('visitors').select('variant_id');
@@ -206,7 +207,7 @@ router.post('/new', requireAuth, async (req, res) => {
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     owner: adminId,
-    domain_id: domainId,
+    ...(domainId ? { domain_id: domainId } : {}),
     updated_at: new Date().toISOString()
   }).select().single();
 
@@ -329,8 +330,9 @@ router.get('/rotation', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const owners = getAdminOwners(adminId);
   const domainId = req.currentDomainId;
-  const { data: variants } = await supabase.from('variants').select('id, name, enabled')
-    .in('owner', owners).eq('domain_id', domainId).order('created_at');
+  const { data: variants } = await scopeDomain(
+    supabase.from('variants').select('id, name, enabled').in('owner', owners), domainId
+  ).order('created_at');
   const [mode, sequenceRaw, activeId, clickThresh, timeHours] = await Promise.all([
     getSetting(domainRotKey(domainId,'mode')), getSetting(domainRotKey(domainId,'sequence')), getSetting(domainRotKey(domainId,'active_id')),
     getSetting(domainRotKey(domainId,'click_threshold')), getSetting(domainRotKey(domainId,'time_hours')),

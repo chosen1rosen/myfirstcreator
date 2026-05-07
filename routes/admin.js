@@ -759,7 +759,7 @@ router.get('/tracking/:id/edit', requireAuth, async (req, res) => {
   const owners = getAdminOwners(adminId);
   const [{ data: link }, { data: variants }] = await Promise.all([
     supabase.from('tracking_links').select('*').eq('id', req.params.id).single(),
-    supabase.from('variants').select('id, name').in('owner', owners).eq('domain_id', req.currentDomainId).order('created_at'),
+    scopeDomain(supabase.from('variants').select('id, name').in('owner', owners), req.currentDomainId).order('created_at'),
   ]);
   if (!link) return res.redirect('/admin/tracking');
 

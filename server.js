@@ -34,10 +34,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Resolve domain on every request (public routes use req.domainId; admin uses session)
-const { domainMiddleware } = require('./routes/domain-middleware');
-app.use(domainMiddleware);
-
 // Public router first — catches / for variant serving before static fallback
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);

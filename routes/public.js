@@ -4,7 +4,6 @@ const supabase = require('../db');
 const { getActiveVariant, renderLandingPage } = require('./admin-variants');
 const { renderPageFromBlocks } = require('./block-renderer');
 const { getActiveEvent } = require('./addcal');
-// domain-middleware runs globally in server.js — req.domainId is always set
 
 async function getCountry(ip) {
   if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) return null;
@@ -80,8 +79,7 @@ async function runLinkRotation(link) {
 // Tracking link redirect
 router.get('/r/:slug', async (req, res) => {
   const { slug } = req.params;
-  const { data: link } = await supabase.from('tracking_links').select('*')
-    .eq('slug', slug).eq('domain_id', req.domainId).single();
+  const { data: link } = await supabase.from('tracking_links').select('*').eq('slug', slug).single();
   if (!link) return res.redirect('/');
 
   const ip = getIP(req);
@@ -194,7 +192,7 @@ router.post('/api/signup', async (req, res) => {
 
   const country = await getCountry(ip);
   const variantId = req.cookies?.mfc_variant ? parseInt(req.cookies.mfc_variant) : null;
-  await supabase.from('signups').insert({ name: name || null, email: cleanEmail, tracking_slug: slug, ip, user_agent: ua, country, variant_id: variantId || null, domain_id: req.domainId || 1 });
+  await supabase.from('signups').insert({ name: name || null, email: cleanEmail, tracking_slug: slug, ip, user_agent: ua, country, variant_id: variantId || null });
 
   // Check if calendar redirect is enabled
   const { data: addcalRow } = await supabase.from('settings').select('value').eq('key', 'addcal_enabled').single();
@@ -305,7 +303,7 @@ router.get('/confirmed', async (req, res) => {
 // ─── shared variant renderer ────────────────────────────────────────────────
 async function serveVariant(req, res, next, variantId, trackingSlug) {
   try {
-    if (!variantId) variantId = await getActiveVariant(req.domainId || 1);
+    if (!variantId) variantId = await getActiveVariant();
     if (!variantId) return next();
 
     const { data: variant } = await supabase.from('variants').select('*').eq('id', variantId).single();
@@ -354,8 +352,7 @@ router.get('/:slug', async (req, res, next) => {
   const { slug } = req.params;
   if (RESERVED.has(slug.toLowerCase())) return next();
 
-  const { data: link } = await supabase.from('tracking_links').select('*')
-    .eq('slug', slug).eq('domain_id', req.domainId).single();
+  const { data: link } = await supabase.from('tracking_links').select('*').eq('slug', slug).single();
   if (!link) return next();
 
   // Set tracking cookie

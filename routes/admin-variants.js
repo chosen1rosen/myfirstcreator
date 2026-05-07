@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
-const { getAdminOwners, rotKey } = require('./admin-utils');
+const { getAdminOwners, rotKey, domainRotKey } = require('./admin-utils');
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -14,23 +14,26 @@ async function setSetting(key, value) {
 }
 
 function requireAuth(req, res, next) {
-  if (req.session?.admin) return next();
-  res.redirect('/admin/login');
+  if (!req.session?.admin) return res.redirect('/admin/login');
+  req.currentDomainId = req.session.currentDomainId || 1;
+  req.currentDomain   = req.session.currentDomain   || 'myfirstcreator.ai';
+  next();
 }
 
 // ─── rotation engine ─────────────────────────────────────────────────────────
 // Returns the variant_id that should be shown right now, and bumps counters.
 // Also handles auto-rotation when thresholds are hit.
+// domainId scopes rotation state: domain 1 uses legacy unprefixed keys.
 
-async function getActiveVariant() {
+async function getActiveVariant(domainId = 1) {
   const [modeRaw, sequenceRaw, activeIdRaw, clickCountRaw, startedAtRaw, clickThreshRaw, timeHoursRaw] = await Promise.all([
-    getSetting('rot_mode'),           // 'manual' | 'click' | 'time'
-    getSetting('rot_sequence'),       // JSON array of variant IDs in order
-    getSetting('rot_active_id'),      // current active variant ID
-    getSetting('rot_click_count'),    // visits to current variant this window
-    getSetting('rot_started_at'),     // ISO timestamp when current window started
-    getSetting('rot_click_threshold'),// visits before rotating (click mode)
-    getSetting('rot_time_hours'),     // hours per variant (time mode)
+    getSetting(domainRotKey(domainId, 'mode')),
+    getSetting(domainRotKey(domainId, 'sequence')),
+    getSetting(domainRotKey(domainId, 'active_id')),
+    getSetting(domainRotKey(domainId, 'click_count')),
+    getSetting(domainRotKey(domainId, 'started_at')),
+    getSetting(domainRotKey(domainId, 'click_threshold')),
+    getSetting(domainRotKey(domainId, 'time_hours')),
   ]);
 
   const mode = modeRaw || 'manual';
@@ -43,7 +46,7 @@ async function getActiveVariant() {
 
   // In manual mode or with no sequence configured, just serve the active variant directly
   if (mode === 'manual' || sequence.length === 0) {
-    await setSetting('rot_click_count', String(clickCount + 1));
+    await setSetting(domainRotKey(domainId, 'click_count'), String(clickCount + 1));
     return activeId;
   }
 
@@ -63,15 +66,15 @@ async function getActiveVariant() {
     const nextIdx = (idx + 1) % sequence.length;
     activeId = sequence[nextIdx];
     await Promise.all([
-      setSetting('rot_active_id', String(activeId)),
-      setSetting('rot_click_count', '0'),
-      setSetting('rot_started_at', new Date().toISOString()),
+      setSetting(domainRotKey(domainId, 'active_id'),   String(activeId)),
+      setSetting(domainRotKey(domainId, 'click_count'), '0'),
+      setSetting(domainRotKey(domainId, 'started_at'),  new Date().toISOString()),
     ]);
     clickCount = 0;
   }
 
   // Bump click count
-  await setSetting('rot_click_count', String(clickCount + 1));
+  await setSetting(domainRotKey(domainId, 'click_count'), String(clickCount + 1));
 
   return activeId;
 }
@@ -94,7 +97,9 @@ const { renderPageFromBlocks } = require('./block-renderer');
 router.get('/', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const owners = getAdminOwners(adminId);
-  const { data: variants } = await supabase.from('variants').select('*').in('owner', owners).order('created_at', { ascending: false });
+  const domainId = req.currentDomainId;
+  const { data: variants } = await supabase.from('variants').select('*')
+    .in('owner', owners).eq('domain_id', domainId).order('created_at', { ascending: false });
 
   // Stats per variant
   const { data: visitRows } = await supabase.from('visitors').select('variant_id');
@@ -103,11 +108,11 @@ router.get('/', requireAuth, async (req, res) => {
   (visitRows || []).forEach(r => { if (r.variant_id) vMap[r.variant_id] = (vMap[r.variant_id] || 0) + 1; });
   (signupRows || []).forEach(r => { if (r.variant_id) sMap[r.variant_id] = (sMap[r.variant_id] || 0) + 1; });
 
-  // Rotation state (scoped per admin)
+  // Rotation state (scoped per domain)
   const [mode, activeId, clickCount, startedAt, clickThresh, timeHours, sequenceRaw] = await Promise.all([
-    getSetting(rotKey(adminId,'mode')), getSetting(rotKey(adminId,'active_id')), getSetting(rotKey(adminId,'click_count')),
-    getSetting(rotKey(adminId,'started_at')), getSetting(rotKey(adminId,'click_threshold')), getSetting(rotKey(adminId,'time_hours')),
-    getSetting(rotKey(adminId,'sequence')),
+    getSetting(domainRotKey(domainId,'mode')), getSetting(domainRotKey(domainId,'active_id')), getSetting(domainRotKey(domainId,'click_count')),
+    getSetting(domainRotKey(domainId,'started_at')), getSetting(domainRotKey(domainId,'click_threshold')), getSetting(domainRotKey(domainId,'time_hours')),
+    getSetting(domainRotKey(domainId,'sequence')),
   ]);
   const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
 
@@ -141,7 +146,7 @@ router.get('/', requireAuth, async (req, res) => {
 
   res.send(layout('Landing Page Variants', `
     <div class="flex-between" style="margin-bottom:20px">
-      <div></div>
+      <div style="font-size:13px;color:#64748b">Domain: <strong style="color:#a78bfa">${req.currentDomain}</strong></div>
       <a href="/admin/variants/new" class="btn btn-primary">+ New Variant</a>
     </div>
 
@@ -182,11 +187,9 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
 // Create variant
 router.post('/new', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
+  const domainId = req.currentDomainId;
   const { name, headline, subheadline, cta_text, badge_text, vsl_source, vsl_id, vsl_url, trust_items } = req.body;
-  // Determine VSL fields based on picker selection
-  let resolvedVslType = 'none';
-  let resolvedVslUrl = null;
-  let resolvedVslId = null;
+  let resolvedVslType = 'none', resolvedVslUrl = null, resolvedVslId = null;
   if (vsl_source === 'library' && vsl_id) {
     resolvedVslId = parseInt(vsl_id);
     resolvedVslType = 'library';
@@ -199,18 +202,19 @@ router.post('/new', requireAuth, async (req, res) => {
     vsl_type: resolvedVslType, vsl_url: resolvedVslUrl, vsl_id: resolvedVslId,
     trust_items,
     owner: adminId,
+    domain_id: domainId,
     updated_at: new Date().toISOString()
   }).select().single();
 
-  // If first variant for this admin, auto-set as active in their rotation
-  const activeId = await getSetting(rotKey(adminId, 'active_id'));
+  // If first variant for this domain, auto-set as active
+  const activeId = await getSetting(domainRotKey(domainId, 'active_id'));
   if (!activeId && data) {
     await Promise.all([
-      setSetting(rotKey(adminId, 'active_id'), String(data.id)),
-      setSetting(rotKey(adminId, 'sequence'), JSON.stringify([data.id])),
-      setSetting(rotKey(adminId, 'mode'), 'manual'),
-      setSetting(rotKey(adminId, 'click_count'), '0'),
-      setSetting(rotKey(adminId, 'started_at'), new Date().toISOString()),
+      setSetting(domainRotKey(domainId, 'active_id'),   String(data.id)),
+      setSetting(domainRotKey(domainId, 'sequence'),    JSON.stringify([data.id])),
+      setSetting(domainRotKey(domainId, 'mode'),        'manual'),
+      setSetting(domainRotKey(domainId, 'click_count'), '0'),
+      setSetting(domainRotKey(domainId, 'started_at'),  new Date().toISOString()),
     ]);
   }
   res.redirect('/admin/variants');
@@ -241,31 +245,29 @@ router.post('/:id/edit', requireAuth, async (req, res) => {
 
 // Set live (manual activation)
 router.post('/:id/activate', requireAuth, async (req, res) => {
-  const adminId = req.session.adminId || 'steven';
+  const domainId = req.currentDomainId;
   const id = parseInt(req.params.id);
-  // Always set mode to manual and ensure this variant is in the sequence
-  // so the public rotation engine always has a valid state to serve from.
-  const existingSeqRaw = await getSetting(rotKey(adminId, 'sequence'));
+  const existingSeqRaw = await getSetting(domainRotKey(domainId, 'sequence'));
   let sequence = existingSeqRaw ? JSON.parse(existingSeqRaw) : [];
   if (!sequence.includes(id)) sequence = [id, ...sequence];
   await Promise.all([
-    setSetting(rotKey(adminId, 'active_id'), String(id)),
-    setSetting(rotKey(adminId, 'mode'), 'manual'),
-    setSetting(rotKey(adminId, 'sequence'), JSON.stringify(sequence)),
-    setSetting(rotKey(adminId, 'click_count'), '0'),
-    setSetting(rotKey(adminId, 'started_at'), new Date().toISOString()),
+    setSetting(domainRotKey(domainId, 'active_id'),   String(id)),
+    setSetting(domainRotKey(domainId, 'mode'),        'manual'),
+    setSetting(domainRotKey(domainId, 'sequence'),    JSON.stringify(sequence)),
+    setSetting(domainRotKey(domainId, 'click_count'), '0'),
+    setSetting(domainRotKey(domainId, 'started_at'),  new Date().toISOString()),
   ]);
   res.redirect('/admin/variants');
 });
 
 // Rotation debug — shows live DB state for rotation keys
 router.get('/rot-debug', requireAuth, async (req, res) => {
-  const adminId = req.session.adminId || 'steven';
-  const keys = ['mode','sequence','active_id','click_count','started_at','click_threshold','time_hours'].map(s => rotKey(adminId, s));
+  const domainId = req.currentDomainId;
+  const keys = ['mode','sequence','active_id','click_count','started_at','click_threshold','time_hours'].map(s => domainRotKey(domainId, s));
   const { data } = await supabase.from('settings').select('key, value').in('key', keys);
   const map = {};
   (data || []).forEach(r => { map[r.key] = r.value; });
-  const { data: variants } = await supabase.from('variants').select('id, name, owner').order('id');
+  const { data: variants } = await supabase.from('variants').select('id, name, owner, domain_id').order('id');
   res.send(layout('Rotation Debug', `
     <div class="card">
       <div class="card-title">Live DB Rotation State (adminId: ${adminId})</div>
@@ -317,10 +319,12 @@ router.get('/:id/preview', requireAuth, async (req, res) => {
 router.get('/rotation', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const owners = getAdminOwners(adminId);
-  const { data: variants } = await supabase.from('variants').select('id, name, enabled').in('owner', owners).order('created_at');
+  const domainId = req.currentDomainId;
+  const { data: variants } = await supabase.from('variants').select('id, name, enabled')
+    .in('owner', owners).eq('domain_id', domainId).order('created_at');
   const [mode, sequenceRaw, activeId, clickThresh, timeHours] = await Promise.all([
-    getSetting(rotKey(adminId,'mode')), getSetting(rotKey(adminId,'sequence')), getSetting(rotKey(adminId,'active_id')),
-    getSetting(rotKey(adminId,'click_threshold')), getSetting(rotKey(adminId,'time_hours')),
+    getSetting(domainRotKey(domainId,'mode')), getSetting(domainRotKey(domainId,'sequence')), getSetting(domainRotKey(domainId,'active_id')),
+    getSetting(domainRotKey(domainId,'click_threshold')), getSetting(domainRotKey(domainId,'time_hours')),
   ]);
   const sequence = sequenceRaw ? JSON.parse(sequenceRaw) : [];
 
@@ -418,9 +422,8 @@ router.get('/rotation', requireAuth, async (req, res) => {
 
 // Save rotation settings
 router.post('/rotation', requireAuth, async (req, res) => {
-  const adminId = req.session.adminId || 'steven';
+  const domainId = req.currentDomainId;
   const { mode, click_threshold, time_hours } = req.body;
-  // sequence comes as comma-separated string from hidden input (ordered)
   const seqRaw = req.body.sequence || '';
   let sequence = seqRaw ? seqRaw.split(',').map(Number).filter(Boolean) : [];
   if (!sequence.length && req.body.sequence_arr) {
@@ -428,18 +431,17 @@ router.post('/rotation', requireAuth, async (req, res) => {
   }
 
   const saves = [
-    setSetting(rotKey(adminId,'mode'), mode),
-    setSetting(rotKey(adminId,'sequence'), JSON.stringify(sequence)),
-    setSetting(rotKey(adminId,'click_threshold'), click_threshold || '500'),
-    setSetting(rotKey(adminId,'time_hours'), time_hours || '168'),
-    setSetting(rotKey(adminId,'click_count'), '0'),
-    setSetting(rotKey(adminId,'started_at'), new Date().toISOString()),
+    setSetting(domainRotKey(domainId,'mode'),            mode),
+    setSetting(domainRotKey(domainId,'sequence'),        JSON.stringify(sequence)),
+    setSetting(domainRotKey(domainId,'click_threshold'), click_threshold || '500'),
+    setSetting(domainRotKey(domainId,'time_hours'),      time_hours || '168'),
+    setSetting(domainRotKey(domainId,'click_count'),     '0'),
+    setSetting(domainRotKey(domainId,'started_at'),      new Date().toISOString()),
   ];
 
-  // If active variant is not in new sequence, set first of sequence as active
-  const activeId = await getSetting(rotKey(adminId,'active_id'));
+  const activeId = await getSetting(domainRotKey(domainId,'active_id'));
   if (sequence.length > 0 && (!activeId || !sequence.includes(parseInt(activeId)))) {
-    saves.push(setSetting(rotKey(adminId,'active_id'), String(sequence[0])));
+    saves.push(setSetting(domainRotKey(domainId,'active_id'), String(sequence[0])));
   }
 
   await Promise.all(saves);

@@ -1,4 +1,14 @@
-module.exports = (title, content, activePage = '') => `<!DOCTYPE html>
+module.exports = (title, content, activePage = '', opts = {}) => {
+  const domainBanner = opts.currentDomain && opts.currentDomain !== 'myfirstcreator.ai'
+    ? `<div style="background:#1e0a3c;border-bottom:1px solid #4c1d95;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px">
+        <span style="color:#c4b5fd">Managing: <strong style="color:#a78bfa">${opts.currentDomain}</strong></span>
+        <form method="POST" action="/admin/domains/1/manage" style="margin:0">
+          <button style="background:none;border:none;color:#64748b;cursor:pointer;font-size:12px">Switch to primary →</button>
+        </form>
+       </div>`
+    : '';
+
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -13,7 +23,8 @@ module.exports = (title, content, activePage = '') => `<!DOCTYPE html>
     .sidebar a:hover, .sidebar a.active { background: #1e1e35; color: #a78bfa; }
     .sidebar a.active { border-left: 3px solid #a78bfa; }
     .sidebar-section { padding: 8px 20px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; margin-top: 8px; }
-    .main { margin-left: 220px; flex: 1; padding: 32px; }
+    .main { margin-left: 220px; flex: 1; padding: 0; display: flex; flex-direction: column; }
+    .main-content { padding: 32px; flex: 1; }
     .page-title { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 24px; }
     .card { background: #12121f; border: 1px solid #1e1e30; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
     .card-title { font-size: 14px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
@@ -65,15 +76,21 @@ module.exports = (title, content, activePage = '') => `<!DOCTYPE html>
     <div class="sidebar-section">Growth</div>
     <a href="/admin/tracking" class="${activePage === 'tracking' ? 'active' : ''}">🔗 Tracking Links</a>
     <a href="/admin/events" class="${activePage === 'events' ? 'active' : ''}">📅 Events & Calendar</a>
+    <div class="sidebar-section">Infrastructure</div>
+    <a href="/admin/domains" class="${activePage === 'domains' ? 'active' : ''}">🌐 Domains</a>
     <a href="/" target="_blank" style="margin-top:16px">🌐 View Site</a>
     <a href="/admin/logout">🚪 Logout</a>
   </nav>
   <main class="main">
-    <div class="page-title">${title}</div>
-    ${content}
+    ${domainBanner}
+    <div class="main-content">
+      <div class="page-title">${title}</div>
+      ${content}
+    </div>
   </main>
   <script>
     function copyToClipboard(text) { navigator.clipboard.writeText(text); }
   </script>
 </body>
 </html>`;
+};

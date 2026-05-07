@@ -34,6 +34,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Domain middleware — resolves req.domainId for every request
+const { domainMiddleware } = require('./routes/domain-middleware');
+app.use(domainMiddleware);
+
 // Public router first — catches / for variant serving before static fallback
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);

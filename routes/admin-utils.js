@@ -97,6 +97,16 @@ function rotKey(adminId, suffix) {
   return `rot_${adminId}_${suffix}`;
 }
 
+/**
+ * Returns the settings key for domain-scoped rotation.
+ * Domain 1 (primary) uses unprefixed keys for backward compat.
+ * Other domains use `d{id}_rot_{suffix}`.
+ */
+function domainRotKey(domainId, suffix) {
+  if (!domainId || domainId === 1) return `rot_${suffix}`;
+  return `d${domainId}_rot_${suffix}`;
+}
+
 module.exports = {
   getAdminAccounts,
   getAdminOwners,
@@ -105,4 +115,5 @@ module.exports = {
   addLinkToAdmin,
   removeLinkFromAdmin,
   rotKey,
+  domainRotKey,
 };

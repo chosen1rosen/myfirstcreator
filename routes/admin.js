@@ -7,6 +7,7 @@ const { getAdminAccounts, getAdminOwners, getAdminVariantIds, getAdminLinkSlugs,
 const { router: variantsRouter } = require('./admin-variants');
 const builderRouter = require('./admin-builder');
 const customRouter = require('./admin-custom');
+const domainsRouter = require('./admin-domains');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
@@ -29,8 +30,10 @@ async function setSetting(key, value) {
 }
 
 function requireAuth(req, res, next) {
-  if (req.session?.admin) return next();
-  res.redirect('/admin/login');
+  if (!req.session?.admin) return res.redirect('/admin/login');
+  req.currentDomainId = req.session.currentDomainId || 1;
+  req.currentDomain = req.session.currentDomain || 'myfirstcreator.ai';
+  next();
 }
 
 
@@ -61,42 +64,23 @@ router.get('/', requireAuth, (req, res) => res.redirect('/admin/dashboard'));
 // Dashboard
 router.get('/dashboard', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
-  const variantIds = await getAdminVariantIds(adminId);
-  const adminLinkSlugs = await getAdminLinkSlugs(adminId); // null = all (steven), [] = none yet (new admin)
+  const domainId = req.currentDomainId;
 
-  // Scoped signup/visitor counts
-  let signupQ = supabase.from('signups').select('*', { count: 'exact', head: true });
-  let visitorQ = supabase.from('visitors').select('*', { count: 'exact', head: true });
-  if (variantIds.length > 0) {
-    signupQ = signupQ.in('variant_id', variantIds);
-    visitorQ = visitorQ.in('variant_id', variantIds);
-  } else if (adminId !== 'steven') {
-    // New admin with no variants yet — show zeros
-    signupQ = signupQ.eq('variant_id', -1);
-    visitorQ = visitorQ.eq('variant_id', -1);
-  }
-
-  // Scoped link count
-  let linkQ = supabase.from('tracking_links').select('*', { count: 'exact', head: true });
-  if (adminLinkSlugs !== null) linkQ = adminLinkSlugs.length > 0 ? linkQ.in('slug', adminLinkSlugs) : linkQ.eq('slug', '__none__');
-
-  const [{ count: totalSignups }, { count: totalVisitors }, { count: totalLinks }] = await Promise.all([signupQ, visitorQ, linkQ]);
+  const [{ count: totalSignups }, { count: totalVisitors }, { count: totalLinks }] = await Promise.all([
+    supabase.from('signups').select('*', { count: 'exact', head: true }).eq('domain_id', domainId),
+    supabase.from('visitors').select('*', { count: 'exact', head: true }),
+    supabase.from('tracking_links').select('*', { count: 'exact', head: true }).eq('domain_id', domainId),
+  ]);
 
   const today = new Date().toISOString().slice(0, 10);
-  let todayQ = supabase.from('signups').select('*', { count: 'exact', head: true }).gte('signed_up_at', today);
-  if (variantIds.length > 0) todayQ = todayQ.in('variant_id', variantIds);
-  else if (adminId !== 'steven') todayQ = todayQ.eq('variant_id', -1);
-  const { count: todaySignups } = await todayQ;
+  const { count: todaySignups } = await supabase.from('signups')
+    .select('*', { count: 'exact', head: true }).eq('domain_id', domainId).gte('signed_up_at', today);
 
-  let recentQ = supabase.from('signups').select('*').order('signed_up_at', { ascending: false }).limit(10);
-  if (variantIds.length > 0) recentQ = recentQ.in('variant_id', variantIds);
-  else if (adminId !== 'steven') recentQ = recentQ.eq('variant_id', -1);
-  const { data: recentSignups } = await recentQ;
+  const { data: recentSignups } = await supabase.from('signups')
+    .select('*').eq('domain_id', domainId).order('signed_up_at', { ascending: false }).limit(10);
 
-  // Scoped tracking links
-  let linksQ = supabase.from('tracking_links').select('*');
-  if (adminLinkSlugs !== null) linksQ = adminLinkSlugs.length > 0 ? linksQ.in('slug', adminLinkSlugs) : linksQ.eq('slug', '__none__');
-  const { data: links } = await linksQ;
+  const { data: links } = await supabase.from('tracking_links')
+    .select('*').eq('domain_id', domainId);
 
   // Scoped visit/conversion counts per link
   const slugList = (links || []).map(l => l.slug);
@@ -125,32 +109,26 @@ router.get('/dashboard', requireAuth, async (req, res) => {
     </div>
     <div class="card"><div class="card-title">Recent Signups</div>${recentSignups?.length ? `<table><thead><tr><th>Name</th><th>Email</th><th>Source</th><th>Location</th><th>Time</th></tr></thead><tbody>${recentRows}</tbody></table>` : '<div class="empty">No signups yet</div>'}</div>
     <div class="card"><div class="card-title">Top Tracking Links</div>${topLinks.length ? `<table><thead><tr><th>Slug</th><th>Name</th><th>Visits</th><th>Signups</th><th>CVR</th></tr></thead><tbody>${topRows}</tbody></table>` : '<div class="empty">No tracking links yet</div>'}</div>
-  `, 'dashboard'));
+  `, 'dashboard', { currentDomain: req.currentDomain }));
 });
 
 // Signups
 router.get('/signups', requireAuth, async (req, res) => {
-  const adminId = req.session.adminId || 'steven';
-  const variantIds = await getAdminVariantIds(adminId);
+  const domainId = req.currentDomainId;
   const page = parseInt(req.query.page || '1');
   const limit = 50;
   const from = (page - 1) * limit;
   const search = req.query.q || '';
   const filter = req.query.ref || '';
 
-  let query = supabase.from('signups').select('*', { count: 'exact' }).order('signed_up_at', { ascending: false }).range(from, from + limit - 1);
-  // Scope to admin's variants
-  if (variantIds.length > 0) query = query.in('variant_id', variantIds);
-  else if (adminId !== 'steven') query = query.eq('variant_id', -1);
+  let query = supabase.from('signups').select('*', { count: 'exact' })
+    .eq('domain_id', domainId).order('signed_up_at', { ascending: false }).range(from, from + limit - 1);
   if (filter) query = query.eq('tracking_slug', filter);
   if (search) query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
 
   const { data: signups, count: total } = await query;
-  // Scope slug filter options to admin's signups
-  let slugQuery = supabase.from('signups').select('tracking_slug').not('tracking_slug', 'is', null);
-  if (variantIds.length > 0) slugQuery = slugQuery.in('variant_id', variantIds);
-  else if (adminId !== 'steven') slugQuery = slugQuery.eq('variant_id', -1);
-  const { data: slugs } = await slugQuery;
+  const { data: slugs } = await supabase.from('signups').select('tracking_slug')
+    .eq('domain_id', domainId).not('tracking_slug', 'is', null);
   const uniqueSlugs = [...new Set((slugs || []).map(s => s.tracking_slug))];
 
   const rows = (signups || []).map(s => `<tr><td>${s.id}</td><td>${s.name || '—'}</td><td><strong>${s.email}</strong></td><td><span class="badge badge-purple">${s.tracking_slug || 'direct'}</span></td><td style="font-size:13px">${s.country || `<span style="font-family:monospace;font-size:11px;color:#64748b">${s.ip}</span>`}</td><td style="color:#64748b;font-size:12px">${new Date(s.signed_up_at).toLocaleString()}</td></tr>`).join('');
@@ -174,12 +152,8 @@ router.get('/signups', requireAuth, async (req, res) => {
 
 // Export CSV
 router.get('/signups/export', requireAuth, async (req, res) => {
-  const adminId = req.session.adminId || 'steven';
-  const variantIds = await getAdminVariantIds(adminId);
-  let q = supabase.from('signups').select('*').order('signed_up_at', { ascending: false });
-  if (variantIds.length > 0) q = q.in('variant_id', variantIds);
-  else if (adminId !== 'steven') q = q.eq('variant_id', -1);
-  const { data: signups } = await q;
+  const { data: signups } = await supabase.from('signups').select('*')
+    .eq('domain_id', req.currentDomainId).order('signed_up_at', { ascending: false });
   const rows = [
     ['ID', 'Name', 'Email', 'Source', 'IP', 'Signed Up'].join(','),
     ...(signups || []).map(s => [s.id, `"${(s.name||'').replace(/"/g,'""')}"`, `"${s.email}"`, s.tracking_slug||'direct', s.ip, new Date(s.signed_up_at).toISOString()].join(','))
@@ -694,12 +668,10 @@ router.post('/testimonials/:id/delete', requireAuth, async (req, res) => {
 router.get('/tracking', requireAuth, async (req, res) => {
   const adminId = req.session.adminId || 'steven';
   const owners = getAdminOwners(adminId);
-  const adminLinkSlugs = await getAdminLinkSlugs(adminId);
-  let linksQ = supabase.from('tracking_links').select('*').order('created_at', { ascending: false });
-  if (adminLinkSlugs !== null) linksQ = adminLinkSlugs.length > 0 ? linksQ.in('slug', adminLinkSlugs) : linksQ.eq('slug', '__none__');
+  const domainId = req.currentDomainId;
   const [{ data: links }, { data: variants }] = await Promise.all([
-    linksQ,
-    supabase.from('variants').select('id, name').in('owner', owners).order('created_at'),
+    supabase.from('tracking_links').select('*').eq('domain_id', domainId).order('created_at', { ascending: false }),
+    supabase.from('variants').select('id, name').in('owner', owners).eq('domain_id', domainId).order('created_at'),
   ]);
   const slugList = (links || []).map(l => l.slug);
   let visits = [], sigs = [];
@@ -776,7 +748,7 @@ router.post('/tracking', requireAuth, async (req, res) => {
   if (existing) return res.redirect('/admin/tracking?msg=exists');
   let dest = (destination || '/').trim();
   if (dest && !dest.startsWith('/') && !dest.startsWith('http')) dest = '/' + dest;
-  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: dest, link_mode: 'global' });
+  await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: dest, link_mode: 'global', domain_id: req.currentDomainId });
   await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
 });
@@ -787,7 +759,7 @@ router.get('/tracking/:id/edit', requireAuth, async (req, res) => {
   const owners = getAdminOwners(adminId);
   const [{ data: link }, { data: variants }] = await Promise.all([
     supabase.from('tracking_links').select('*').eq('id', req.params.id).single(),
-    supabase.from('variants').select('id, name').in('owner', owners).order('created_at'),
+    supabase.from('variants').select('id, name').in('owner', owners).eq('domain_id', req.currentDomainId).order('created_at'),
   ]);
   if (!link) return res.redirect('/admin/tracking');
 
@@ -1072,5 +1044,6 @@ router.post('/settings', requireAuth, async (req, res) => {
 router.use('/variants', variantsRouter);
 router.use('/variants', builderRouter);
 router.use('/variants', customRouter);
+router.use('/domains', domainsRouter);
 
 module.exports = router;

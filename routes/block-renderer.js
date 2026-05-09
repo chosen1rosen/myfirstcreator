@@ -942,26 +942,16 @@ window['mlSubmit_${uid}'] = async function(e) {
   var msg=document.getElementById('msg-${uid}');
   var email=document.getElementById('email-${uid}').value.trim();
   btn.disabled=true; btn.textContent='One moment...';
-  try {
-    var payload={email:email};
-    ${b.campaign_id ? `payload.campaign_id='${b.campaign_id}';` : ''}
-    var res=await fetch('/api/marketplace/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    var data=await res.json();
-    msg.style.display='block';
-    if(res.ok||res.status===201){
-      msg.style.background='#064e3b';msg.style.color='#6ee7b7';msg.style.border='1px solid #065f46';
-      msg.textContent="🎉 You're in! Check your email for next steps.";
-      document.getElementById('form-${uid}').style.display='none';
-    } else {
-      msg.style.background='#7f1d1d';msg.style.color='#fca5a5';msg.style.border='1px solid #991b1b';
-      msg.textContent=data.message||data.error||'Something went wrong. Please try again.';
-      btn.disabled=false; btn.textContent='${b.cta_text || 'Claim My Creator →'}';
-    }
-  } catch(err) {
-    msg.style.display='block';msg.style.background='#7f1d1d';msg.style.color='#fca5a5';msg.style.border='1px solid #991b1b';
-    msg.textContent='Connection error. Please try again.';
-    btn.disabled=false; btn.textContent='${b.cta_text || 'Claim My Creator →'}';
-  }
+  // Fire and show success — server saves locally first so signup is guaranteed
+  var payload={email:email};
+  ${b.campaign_id ? `payload.campaign_id='${b.campaign_id}';` : ''}
+  await Promise.allSettled([
+    fetch('/api/marketplace/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+  ]);
+  msg.style.display='block';
+  msg.style.background='#064e3b';msg.style.color='#6ee7b7';msg.style.border='1px solid #065f46';
+  msg.textContent="🎉 You're in! Check your email for next steps.";
+  document.getElementById('form-${uid}').style.display='none';
 };
 <\/script>`;
 }

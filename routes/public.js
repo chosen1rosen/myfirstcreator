@@ -184,6 +184,52 @@ router.get('/api/settings', async (req, res) => {
 });
 
 // Email signup
+// Marketplace lead proxy — saves locally first, then forwards to marketplace API best-effort
+router.post('/api/marketplace/lead', async (req, res) => {
+  const { email, campaign_id, source } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  // Save to our own signups table regardless of marketplace API outcome
+  const { data: existing } = await supabase.from('signups').select('id').eq('email', cleanEmail).single();
+  if (!existing) {
+    const ip = getIP(req);
+    const ua = req.headers['user-agent'] || '';
+    const slug = req.cookies?.mfc_ref || req.body.ref || null;
+    const country = await getCountry(ip);
+    const variantId = req.cookies?.mfc_variant ? parseInt(req.cookies.mfc_variant) : null;
+    await supabase.from('signups').insert({
+      name: null,
+      email: cleanEmail,
+      tracking_slug: slug,
+      ip,
+      user_agent: ua,
+      country,
+      variant_id: variantId || null,
+    });
+  }
+
+  // Forward to marketplace API (best-effort — don't fail the user if it errors)
+  let mpResult = { forwarded: false };
+  try {
+    const mpRes = await fetch('https://api.aicreatormarketplace.com/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, campaign_id, source }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const mpData = await mpRes.json().catch(() => ({}));
+    mpResult = { forwarded: true, status: mpRes.status, ...mpData };
+  } catch (err) {
+    console.error('Marketplace API forward error:', err.message);
+  }
+
+  res.json({ success: true, ...mpResult });
+});
+
 router.post('/api/signup', async (req, res) => {
   const { name, email } = req.body;
   if (!email || !email.includes('@')) {

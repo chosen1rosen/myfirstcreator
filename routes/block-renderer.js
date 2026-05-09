@@ -12,6 +12,7 @@ const BLOCK_TYPES = [
   { type: 'html',          label: '💻 Custom HTML' },
   { type: 'how_it_works',  label: '📋 How It Works' },
   { type: 'creator_scroll', label: '🎬 Creator Scroll' },
+  { type: 'video_testimonials', label: '🎬 Video Testimonials' },
   { type: 'marketplace_creators', label: '🤖 AI Creators Grid' },
   { type: 'marketplace_categories', label: '🗂 Category Browser' },
   { type: 'marketplace_lead', label: '🎯 Marketplace Lead Form' },
@@ -46,6 +47,7 @@ function renderBlock(block, testimonialData = []) {
     case 'html': return `<div class="custom-block">${block.content || ''}</div>`;
     case 'how_it_works': return renderHowItWorks(block);
     case 'creator_scroll': return renderCreatorScroll(block);
+    case 'video_testimonials': return renderVideoTestimonials(block, testimonialData);
     case 'marketplace_creators': return renderMarketplaceCreators(block);
     case 'marketplace_categories': return renderMarketplaceCategories(block);
     case 'marketplace_lead': return renderMarketplaceLead(block);
@@ -962,6 +964,195 @@ window['mlSubmit_${uid}'] = async function(e) {
   }
 };
 <\/script>`;
+}
+
+function renderVideoTestimonials(b, allTestimonials) {
+  const limit = parseInt(b.count) || 0;
+  const videos = (allTestimonials || [])
+    .filter(t => t.type === 'video' && t.video_path && t.active !== false);
+  const items = limit > 0 ? videos.slice(0, limit) : videos;
+
+  if (!items.length) return `
+    <section style="padding:72px 20px;text-align:center">
+      <div class="container">
+        <p style="color:#475569">Upload video testimonials in Admin → Testimonials → Video tab to display them here.</p>
+      </div>
+    </section>`;
+
+  const blockId = 'vtc-' + Math.random().toString(36).slice(2, 7);
+  const headline = b.headline || 'What Our Students Are Saying';
+  const subhead = b.subheadline || 'Join thousands of creators building real income streams.';
+  const ctaText = b.cta_text || 'Claim Your Free Spot →';
+  const ctaUrl = b.cta_url || '#signup';
+
+  const cards = items.map((t, idx) => `
+    <div class="vtc-card" data-idx="${idx}">
+      <video class="vtc-video" src="${t.video_path}" preload="none" playsinline
+        style="width:100%;height:100%;object-fit:cover;display:block;border-radius:16px"></video>
+      <button class="vtc-play-btn" onclick="vtcTogglePlay(this)" aria-label="Play">
+        <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="40" cy="40" r="39" fill="rgba(0,0,0,.5)" stroke="rgba(255,255,255,.8)" stroke-width="2"/>
+          <polygon points="32,24 60,40 32,56" fill="white"/>
+        </svg>
+      </button>
+      <div class="vtc-info">
+        <div class="vtc-name">${t.name}</div>
+        ${t.earnings ? `<div class="vtc-earnings">${t.earnings}</div>` : ''}
+      </div>
+    </div>`).join('');
+
+  const dots = items.map((_, i) => `<button class="vtc-dot ${i===0?'vtc-dot-active':''}" onclick="vtcGoTo_${blockId}(${i})" aria-label="Slide ${i+1}"></button>`).join('');
+
+  return `
+    <section class="vtc-section" id="${blockId}" style="padding:72px 0;background:#f8f9fc;overflow:hidden">
+      <div style="text-align:center;padding:0 20px;margin-bottom:40px">
+        <h2 style="font-size:clamp(26px,4vw,46px);font-weight:800;color:#0f172a;line-height:1.2;max-width:760px;margin:0 auto">${headline}</h2>
+      </div>
+
+      <div class="vtc-outer" style="position:relative;width:100%;overflow:hidden">
+        <div class="vtc-track" id="${blockId}-track" style="display:flex;transition:transform .4s cubic-bezier(.4,0,.2,1);will-change:transform">
+          ${cards}
+        </div>
+        ${items.length > 1 ? `
+        <button class="vtc-arrow vtc-arrow-left" onclick="vtcGoTo_${blockId}(vtcIdx_${blockId}-1)" aria-label="Previous">&#8592;</button>
+        <button class="vtc-arrow vtc-arrow-right" onclick="vtcGoTo_${blockId}(vtcIdx_${blockId}+1)" aria-label="Next">&#8594;</button>` : ''}
+      </div>
+
+      ${items.length > 1 ? `<div class="vtc-dots" style="display:flex;justify-content:center;gap:8px;margin-top:24px">${dots}</div>` : ''}
+
+      <div style="text-align:center;padding:40px 20px 0;max-width:640px;margin:0 auto">
+        <p style="color:#475569;font-size:16px;line-height:1.7;margin-bottom:28px">${subhead}</p>
+        <a href="${ctaUrl}" class="vtc-cta-btn" style="display:inline-block;background:#0f172a;color:white;padding:16px 40px;border-radius:10px;font-size:16px;font-weight:700;text-decoration:none;transition:.2s"
+          onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">${ctaText}</a>
+      </div>
+    </section>
+
+    <style>
+    .vtc-section * { box-sizing: border-box; }
+    .vtc-track { padding: 0 10%; gap: 0; }
+    .vtc-card {
+      flex: 0 0 80%;
+      position: relative;
+      aspect-ratio: 16/9;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,.18);
+      margin: 0 2%;
+      transition: transform .3s, opacity .3s;
+      opacity: .6;
+      transform: scale(.95);
+    }
+    .vtc-card.vtc-active { opacity: 1; transform: scale(1); }
+    .vtc-play-btn {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      background: none; border: none; cursor: pointer;
+      width: 80px; height: 80px; padding: 0;
+      transition: transform .15s;
+    }
+    .vtc-play-btn:hover { transform: translate(-50%,-50%) scale(1.1); }
+    .vtc-info {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 40px 20px 16px;
+      background: linear-gradient(to top, rgba(0,0,0,.8) 0%, transparent 100%);
+      color: white;
+    }
+    .vtc-name { font-size: 15px; font-weight: 700; }
+    .vtc-earnings { font-size: 13px; color: #6ee7b7; margin-top: 2px; }
+    .vtc-arrow {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,.9); border: none; border-radius: 50%;
+      width: 44px; height: 44px; font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,.2); transition: .15s; z-index: 2;
+    }
+    .vtc-arrow:hover { background: white; transform: translateY(-50%) scale(1.08); }
+    .vtc-arrow-left { left: 4%; }
+    .vtc-arrow-right { right: 4%; }
+    .vtc-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #cbd5e1; border: none; cursor: pointer;
+      padding: 0; transition: .2s;
+    }
+    .vtc-dot-active { background: #0f172a; width: 24px; border-radius: 4px; }
+    @media (max-width: 768px) {
+      .vtc-track { padding: 0; gap: 0; }
+      .vtc-card { flex: 0 0 100%; margin: 0; border-radius: 0; }
+      .vtc-arrow-left { left: 8px; }
+      .vtc-arrow-right { right: 8px; }
+    }
+    </style>
+
+    <script>
+    (function() {
+      var BID = '${blockId}';
+      var TOTAL = ${items.length};
+      window['vtcIdx_' + BID] = 0;
+
+      function goTo(idx) {
+        idx = ((idx % TOTAL) + TOTAL) % TOTAL;
+        window['vtcIdx_' + BID] = idx;
+        var track = document.getElementById(BID + '-track');
+        if (!track) return;
+        track.querySelectorAll('.vtc-video').forEach(function(v) {
+          v.pause();
+          var btn = v.nextElementSibling;
+          if (btn) { btn.classList.remove('vtc-playing'); setPlayIcon(btn); }
+        });
+        var cards = track.querySelectorAll('.vtc-card');
+        cards.forEach(function(c, i) {
+          c.classList.toggle('vtc-active', i === idx);
+        });
+        var cardW = track.parentElement.offsetWidth * 0.84;
+        track.style.transform = 'translateX(-' + (idx * cardW) + 'px)';
+        document.querySelectorAll('#' + BID + ' .vtc-dot').forEach(function(d, i) {
+          d.classList.toggle('vtc-dot-active', i === idx);
+        });
+      }
+      window['vtcGoTo_' + BID] = goTo;
+
+      function setPlayIcon(btn) {
+        btn.innerHTML = '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="39" fill="rgba(0,0,0,.5)" stroke="rgba(255,255,255,.8)" stroke-width="2"/><polygon points="32,24 60,40 32,56" fill="white"/></svg>';
+      }
+      function setPauseIcon(btn) {
+        btn.innerHTML = '<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="39" fill="rgba(0,0,0,.5)" stroke="rgba(255,255,255,.8)" stroke-width="2"/><rect x="26" y="24" width="10" height="32" rx="2" fill="white"/><rect x="44" y="24" width="10" height="32" rx="2" fill="white"/></svg>';
+      }
+      window.vtcTogglePlay = function(btn) {
+        var card = btn.closest('.vtc-card');
+        var video = card.querySelector('.vtc-video');
+        var idx = parseInt(card.dataset.idx);
+        goTo(idx);
+        if (video.paused) {
+          document.querySelectorAll('#' + BID + ' .vtc-video').forEach(function(v) {
+            if (v !== video) { v.pause(); var b2 = v.nextElementSibling; if (b2) { b2.classList.remove('vtc-playing'); setPlayIcon(b2); } }
+          });
+          video.play();
+          btn.classList.add('vtc-playing');
+          setPauseIcon(btn);
+          video.onended = function() { btn.classList.remove('vtc-playing'); setPlayIcon(btn); };
+        } else {
+          video.pause();
+          btn.classList.remove('vtc-playing');
+          setPlayIcon(btn);
+        }
+      };
+
+      var touchX = null;
+      var outer = document.querySelector('#' + BID + ' .vtc-outer');
+      if (outer) {
+        outer.addEventListener('touchstart', function(e) { touchX = e.touches[0].clientX; }, { passive: true });
+        outer.addEventListener('touchend', function(e) {
+          if (touchX === null) return;
+          var dx = e.changedTouches[0].clientX - touchX;
+          if (Math.abs(dx) > 40) goTo(window['vtcIdx_' + BID] + (dx < 0 ? 1 : -1));
+          touchX = null;
+        }, { passive: true });
+      }
+
+      goTo(0);
+      window.addEventListener('resize', function() { goTo(window['vtcIdx_' + BID]); });
+    })();
+    </script>`;
 }
 
 module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES, MP_BLOCK_TYPES };

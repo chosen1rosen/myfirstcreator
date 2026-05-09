@@ -1,0 +1,1 @@
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS video_path TEXT;

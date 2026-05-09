@@ -571,13 +571,32 @@ router.get('/testimonials', requireAuth, async (req, res) => {
 
   const rows = (testimonials || []).map(t => {
     const isTg = t.type === 'telegram';
+    const isVideo = t.type === 'video';
+    let previewCell;
+    if (isTg) {
+      previewCell = '<span class="badge" style="background:#0088cc;color:#fff">TG</span>';
+    } else if (isVideo) {
+      previewCell = t.video_path
+        ? `<video src="${t.video_path}" style="width:60px;height:40px;object-fit:cover;border-radius:4px" muted></video>`
+        : '<span class="badge badge-purple">🎬 Video</span>';
+    } else {
+      previewCell = t.image_path ? `<img src="${t.image_path}" width="40" height="40" style="border-radius:50%;object-fit:cover">` : '—';
+    }
+    let quoteCell;
+    if (isTg) {
+      quoteCell = `<a href="${t.telegram_url}" target="_blank" style="color:#0088cc;font-size:12px">${(t.telegram_url||'').substring(0,60)}${(t.telegram_url||'').length>60?'…':''}</a>`;
+    } else if (isVideo) {
+      quoteCell = t.earnings ? `<span class="badge badge-green">${t.earnings}</span>` : '<span style="color:#475569;font-size:12px">🎬 video testimonial</span>';
+    } else {
+      quoteCell = `"${t.quote||''}"`;
+    }
     return `
     <tr>
       <td>${t.id}</td>
-      <td>${isTg ? '<span class="badge" style="background:#0088cc;color:#fff">TG</span>' : (t.image_path ? `<img src="${t.image_path}" width="40" height="40" style="border-radius:50%;object-fit:cover">` : '—')}</td>
+      <td>${previewCell}</td>
       <td><strong>${t.name}</strong>${t.handle ? `<br><span style="color:#64748b;font-size:12px">${t.handle}</span>` : ''}</td>
-      <td>${isTg ? '—' : (t.earnings ? `<span class="badge badge-green">${t.earnings}</span>` : '—')}</td>
-      <td style="max-width:300px;color:#94a3b8;font-size:13px">${isTg ? `<a href="${t.telegram_url}" target="_blank" style="color:#0088cc;font-size:12px">${(t.telegram_url||'').substring(0,60)}${(t.telegram_url||'').length>60?'…':''}</a>` : `"${t.quote || ''}"`}</td>
+      <td>${(isTg || isVideo) ? '—' : (t.earnings ? `<span class="badge badge-green">${t.earnings}</span>` : '—')}</td>
+      <td style="max-width:300px;color:#94a3b8;font-size:13px">${quoteCell}</td>
       <td><span class="badge ${t.active ? 'badge-green' : 'badge-gray'}">${t.active ? 'Active' : 'Hidden'}</span></td>
       <td>
         <form method="POST" action="/admin/testimonials/${t.id}/toggle" style="display:inline"><button class="btn btn-ghost btn-sm">${t.active ? 'Hide' : 'Show'}</button></form>
@@ -589,11 +608,13 @@ router.get('/testimonials', requireAuth, async (req, res) => {
   res.send(layout('Testimonials', `
     ${msg === 'added' ? '<div class="alert alert-success">✅ Testimonial added.</div>' : ''}
     ${msg === 'deleted' ? '<div class="alert alert-success">✅ Deleted.</div>' : ''}
+    ${msg === 'error' ? '<div class="alert alert-error">❌ Error — check required fields.</div>' : ''}
     <div class="card">
       <div class="card-title">Add Testimonial</div>
       <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #1e1e30">
         <button onclick="showTab('manual')" id="tab-manual" style="padding:10px 24px;background:none;border:none;color:#a78bfa;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px">Manual</button>
         <button onclick="showTab('telegram')" id="tab-telegram" style="padding:10px 24px;background:none;border:none;color:#94a3b8;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px">Telegram Post</button>
+        <button onclick="showTab('video')" id="tab-video" style="padding:10px 24px;background:none;border:none;color:#94a3b8;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px">🎬 Video</button>
       </div>
       <div id="pane-manual">
         <form method="POST" action="/admin/testimonials" enctype="multipart/form-data">
@@ -616,20 +637,104 @@ router.get('/testimonials', requireAuth, async (req, res) => {
           <button type="submit" class="btn btn-primary" style="background:#0088cc">Add Telegram Testimonial</button>
         </form>
       </div>
+      <div id="pane-video" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="form-group" style="margin:0"><label>Name *</label><input type="text" id="vtm-name" placeholder="Jane Doe" required></div>
+          <div class="form-group" style="margin:0"><label>Earnings / Result</label><input type="text" id="vtm-earnings" placeholder="$2K+ / hour"></div>
+        </div>
+        <div class="form-group">
+          <label>Video File (mp4, mov — up to several GB supported)</label>
+          <div style="border:2px dashed #2d2d4a;border-radius:10px;padding:24px;text-align:center;cursor:pointer" onclick="document.getElementById('vtm-file-input').click()">
+            <div id="vtm-file-label" style="color:#64748b;font-size:14px">Click to choose video file</div>
+            <input type="file" id="vtm-file-input" accept="video/*" style="display:none" onchange="vtmFileChosen(this)">
+          </div>
+        </div>
+        <div id="vtm-progress-wrap" style="display:none;margin-bottom:16px">
+          <div style="background:#1a1a2e;border-radius:8px;overflow:hidden;height:8px">
+            <div id="vtm-progress-bar" style="background:linear-gradient(135deg,#7c3aed,#06b6d4);height:100%;width:0%;transition:width .3s"></div>
+          </div>
+          <div id="vtm-progress-text" style="font-size:12px;color:#64748b;margin-top:6px">Preparing...</div>
+        </div>
+        <button class="btn btn-primary" onclick="vtmUpload()" id="vtm-upload-btn">Upload Video Testimonial</button>
+        <div id="vtm-result" style="margin-top:12px;font-size:13px"></div>
+      </div>
       <script>
         function showTab(tab) {
-          document.getElementById('pane-manual').style.display = tab==='manual' ? '' : 'none';
-          document.getElementById('pane-telegram').style.display = tab==='telegram' ? '' : 'none';
-          document.getElementById('tab-manual').style.color = tab==='manual' ? '#a78bfa' : '#94a3b8';
-          document.getElementById('tab-manual').style.borderBottomColor = tab==='manual' ? '#7c3aed' : 'transparent';
-          document.getElementById('tab-telegram').style.color = tab==='telegram' ? '#a78bfa' : '#94a3b8';
-          document.getElementById('tab-telegram').style.borderBottomColor = tab==='telegram' ? '#7c3aed' : 'transparent';
+          ['manual','telegram','video'].forEach(t => {
+            document.getElementById('pane-' + t).style.display = t === tab ? '' : 'none';
+            document.getElementById('tab-' + t).style.color = t === tab ? '#a78bfa' : '#94a3b8';
+            document.getElementById('tab-' + t).style.borderBottomColor = t === tab ? '#7c3aed' : 'transparent';
+          });
+        }
+        var vtmFile = null;
+        function vtmFileChosen(input) {
+          vtmFile = input.files[0];
+          if (vtmFile) document.getElementById('vtm-file-label').textContent = vtmFile.name + ' (' + (vtmFile.size / 1024 / 1024).toFixed(1) + ' MB)';
+        }
+        async function vtmUpload() {
+          var name = document.getElementById('vtm-name').value.trim();
+          if (!name) { alert('Name is required'); return; }
+          if (!vtmFile) { alert('Please choose a video file'); return; }
+          var btn = document.getElementById('vtm-upload-btn');
+          btn.disabled = true;
+          var wrap = document.getElementById('vtm-progress-wrap');
+          var bar = document.getElementById('vtm-progress-bar');
+          var txt = document.getElementById('vtm-progress-text');
+          var res = document.getElementById('vtm-result');
+          wrap.style.display = '';
+          res.textContent = '';
+          try {
+            txt.textContent = 'Initializing upload...';
+            var initR = await fetch('/admin/testimonials/video-tus-init', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: vtmFile.name, mimetype: vtmFile.type || 'video/mp4', size: vtmFile.size })
+            });
+            var init = await initR.json();
+            if (init.error) throw new Error(init.error);
+            var CHUNK = 5 * 1024 * 1024;
+            var offset = 0;
+            while (offset < vtmFile.size) {
+              var chunk = vtmFile.slice(offset, offset + CHUNK);
+              var buf = await chunk.arrayBuffer();
+              var chunkR = await fetch('/admin/testimonials/video-tus-chunk', {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/offset+octet-stream',
+                  'x-upload-id': init.uploadId,
+                  'x-upload-offset': String(offset)
+                },
+                body: buf
+              });
+              if (!chunkR.ok) { var e = await chunkR.json(); throw new Error(e.error || 'Chunk failed'); }
+              offset += buf.byteLength;
+              var pct = Math.round((offset / vtmFile.size) * 100);
+              bar.style.width = pct + '%';
+              txt.textContent = 'Uploading... ' + pct + '%';
+            }
+            txt.textContent = 'Saving...';
+            var earnings = document.getElementById('vtm-earnings').value.trim();
+            var confirmR = await fetch('/admin/testimonials/video-confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, earnings, publicUrl: init.publicUrl })
+            });
+            var confirmed = await confirmR.json();
+            if (confirmed.error) throw new Error(confirmed.error);
+            bar.style.width = '100%';
+            txt.textContent = 'Done!';
+            res.innerHTML = '<span style="color:#6ee7b7">✅ Video testimonial added — <a href="/admin/testimonials" style="color:#a78bfa">refresh to see it</a></span>';
+            btn.disabled = false;
+          } catch(err) {
+            res.innerHTML = '<span style="color:#f87171">❌ ' + err.message + '</span>';
+            btn.disabled = false;
+          }
         }
       </script>
     </div>
     <div class="card">
       <div class="card-title">${(testimonials||[]).length} Testimonials</div>
-      ${testimonials?.length ? `<table><thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Earnings</th><th>Quote</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No testimonials yet.</div>'}
+      ${testimonials?.length ? `<table><thead><tr><th>#</th><th>Preview</th><th>Name</th><th>Earnings</th><th>Content</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No testimonials yet.</div>'}
     </div>
   `, 'testimonials'));
 });
@@ -651,6 +756,80 @@ router.post('/testimonials/telegram', requireAuth, async (req, res) => {
   const { error } = await supabase.from('testimonials').insert({ name, quote: null, telegram_url, type: 'telegram', active: true });
   if (error) { console.error('Telegram testimonial insert error:', error.message); return res.redirect('/admin/testimonials?msg=error'); }
   res.redirect('/admin/testimonials?msg=added');
+});
+
+// Video testimonial TUS upload — init
+router.post('/testimonials/video-tus-init', requireAuth, async (req, res) => {
+  try {
+    const { filename, mimetype, size } = req.body;
+    const ext = (filename || 'video.mp4').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'') || 'mp4';
+    const path = `testimonial-videos/vtm-${Date.now()}.${ext}`;
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const bucketName = 'mfc-assets';
+    const b64 = s => Buffer.from(s).toString('base64');
+    const metadata = [
+      `bucketName ${b64(bucketName)}`,
+      `objectName ${b64(path)}`,
+      `contentType ${b64(mimetype || 'video/mp4')}`,
+    ].join(',');
+    const resp = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'x-upsert': 'true',
+        'Upload-Length': String(size),
+        'Tus-Resumable': '1.0.0',
+        'Upload-Metadata': metadata,
+      }
+    });
+    if (!resp.ok) { const e = await resp.text(); return res.status(500).json({ error: `TUS init failed: ${e}` }); }
+    const location = resp.headers.get('Location') || '';
+    const uploadId = location.split('/').filter(Boolean).pop();
+    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(path);
+    res.json({ uploadId, path, publicUrl: urlData.publicUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Video testimonial TUS upload — chunk proxy
+router.patch('/testimonials/video-tus-chunk', requireAuth, express.raw({ type: '*/*', limit: '5mb' }), async (req, res) => {
+  const uploadId = req.headers['x-upload-id'];
+  const offset = req.headers['x-upload-offset'];
+  if (!uploadId || offset === undefined) return res.status(400).json({ error: 'Missing upload-id or offset' });
+  try {
+    const resp = await fetch(`${process.env.SUPABASE_URL}/storage/v1/upload/resumable/${uploadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/offset+octet-stream',
+        'Content-Length': String(req.body.length),
+        'Upload-Offset': offset,
+        'Tus-Resumable': '1.0.0',
+      },
+      body: req.body,
+    });
+    if (!resp.ok) { const e = await resp.text(); return res.status(500).json({ error: e }); }
+    res.json({ offset: parseInt(resp.headers.get('upload-offset') || '0') });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Video testimonial TUS upload — confirm & save to DB
+router.post('/testimonials/video-confirm', requireAuth, async (req, res) => {
+  const { name, earnings, publicUrl } = req.body;
+  if (!name || !publicUrl) return res.status(400).json({ error: 'name and publicUrl required' });
+  const { error } = await supabase.from('testimonials').insert({
+    name,
+    earnings: earnings || null,
+    video_path: publicUrl,
+    type: 'video',
+    active: true,
+  });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
 });
 
 router.post('/testimonials/:id/toggle', requireAuth, async (req, res) => {

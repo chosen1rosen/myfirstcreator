@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const supabase = require('../db');
 const layout = require('./admin-layout');
-const { getAdminAccounts, getAdminOwners, getAdminVariantIds, getAdminLinkSlugs, addLinkToAdmin, removeLinkFromAdmin } = require('./admin-utils');
+const { getAdminAccounts, getAdminOwners, getAdminVariantIds, getAdminLinkSlugs, addLinkToAdmin, removeLinkFromAdmin, scopeDomain } = require('./admin-utils');
 const { router: variantsRouter } = require('./admin-variants');
 const builderRouter = require('./admin-builder');
 const customRouter = require('./admin-custom');
@@ -786,6 +786,8 @@ router.get('/tracking/:id/edit', requireAuth, async (req, res) => {
   }).join('');
 
   // Active variant info
+  const variantNames = {};
+  (variants||[]).forEach(v => { variantNames[v.id] = v.name; });
   const activeVariantName = link.rot_active_id && variantNames
     ? ((variants||[]).find(v => v.id === link.rot_active_id)?.name || `ID ${link.rot_active_id}`)
     : null;

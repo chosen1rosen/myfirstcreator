@@ -355,7 +355,46 @@ function renderCTABanner(b) {
 
 // ─── render full page from blocks ────────────────────────────────────────────
 
-function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
+function trackingScript(sid) {
+  return `<script>
+(function(){
+  var sid='${sid}';
+  var slug=(document.cookie.match(/mfc_ref=([^;]+)/)||[])[1]||null;
+  var vid=(document.cookie.match(/mfc_variant=([^;]+)/)||[])[1]||null;
+  var t0=Date.now();
+  function bn(url,d){try{navigator.sendBeacon(url,JSON.stringify(d));}catch(e){}}
+  function time(){var s=Math.round((Date.now()-t0)/1000);if(s>=2)bn('/api/track/time',{sid:sid,secs:s});}
+  function ev(type,el,val){bn('/api/track/event',{sid:sid,slug:slug,variantId:vid,type:type,element:el,value:String(val||'').slice(0,100)});}
+  document.addEventListener('visibilitychange',function(){if(document.hidden)time();});
+  window.addEventListener('beforeunload',time);
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('.btn-submit,.btn-hero,[data-track]');
+    if(!t)return;
+    var el=t.dataset&&t.dataset.track?t.dataset.track:(t.classList.contains('btn-submit')?'cta_submit':t.classList.contains('btn-hero')?'cta_hero':'cta');
+    ev('click',el,(t.href||t.innerText||'').trim().slice(0,80));
+  },true);
+  document.addEventListener('submit',function(e){
+    if(e.target.querySelector('[type=email]'))ev('form_submit','email_form','');
+  },true);
+  function tv(v){
+    var ms=[10,25,50,75,90],reached=[];
+    v.addEventListener('play',function(){ev('video','video_play','0');});
+    v.addEventListener('timeupdate',function(){
+      if(!v.duration)return;
+      var pct=v.currentTime/v.duration*100;
+      ms.forEach(function(m){if(pct>=m&&reached.indexOf(m)===-1){reached.push(m);ev('video','video_progress',String(m));}});
+    });
+    v.addEventListener('ended',function(){ev('video','video_end','100');});
+  }
+  document.querySelectorAll('video').forEach(tv);
+  document.querySelectorAll('.vsl-wrap iframe,.vsl-section iframe').forEach(function(f){
+    f.parentElement.addEventListener('click',function(){ev('video','video_iframe_click',(f.src||'').slice(0,100));},true);
+  });
+})();
+<\/script>`;
+}
+
+function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false, visitSid = null) {
   const isMarketplace = (blocks || []).some(b => b.type === 'mp_mode' || (b.type && b.type.startsWith('mp_')));
   const bodyBlocks = (blocks || []).filter(b => b.type !== 'mp_mode').map(b => renderBlock(b, testimonialData)).join('\n');
   // Extract CTA text from first email_capture or hero block for the signup JS
@@ -427,6 +466,7 @@ function renderPageFromBlocks(blocks, testimonialData = [], isPreview = false) {
       btn.textContent = '${ctaText}'; btn.disabled = false;
     });
   </script>
+  ${!isPreview && visitSid ? trackingScript(visitSid) : ''}
 </body>
 </html>`;
 }
@@ -1145,4 +1185,4 @@ function renderVideoTestimonials(b, allTestimonials) {
     </script>`;
 }
 
-module.exports = { renderBlock, renderPageFromBlocks, BLOCK_TYPES, MP_BLOCK_TYPES };
+module.exports = { renderBlock, renderPageFromBlocks, trackingScript, BLOCK_TYPES, MP_BLOCK_TYPES };

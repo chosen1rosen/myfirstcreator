@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 const { getAdminOwners, rotKey, domainRotKey, scopeDomain } = require('./admin-utils');
+const { trackingScript } = require('./block-renderer');
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -626,7 +627,7 @@ function variantForm(v = {}, vsls = []) {
 
 // ─── landing page renderer ───────────────────────────────────────────────────
 
-function renderLandingPage(variant, testimonials, isPreview = false, vslData = null) {
+function renderLandingPage(variant, testimonials, isPreview = false, vslData = null, visitSid = null) {
   const headline = variant.headline || 'Make Your First $1,000 With AI Creators';
   const subheadline = variant.subheadline || 'Join thousands building real income streams with AI creators + social media. Watch the free training and claim your spot.';
   const ctaText = variant.cta_text || 'Claim Your Free Spot →';
@@ -888,6 +889,7 @@ function renderLandingPage(variant, testimonials, isPreview = false, vslData = n
       btn.textContent = '${ctaText}'; btn.disabled = false;
     });
   </script>
+  ${!isPreview && visitSid ? trackingScript(visitSid) : ''}
 </body>
 </html>`;
 }

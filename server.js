@@ -38,6 +38,10 @@ app.use((req, res, next) => {
 const { domainMiddleware } = require('./routes/domain-middleware');
 app.use(domainMiddleware);
 
+// Geo-block middleware — checks country before serving public pages
+const { geoBlockMiddleware } = require('./routes/geo-block');
+app.use(geoBlockMiddleware);
+
 // Public router first — catches / for variant serving before static fallback
 app.use('/', publicRouter);
 app.use('/admin', adminRouter);

@@ -67,6 +67,7 @@ module.exports = (title, content, activePage = '', opts = {}) => {
     <div class="sidebar-section">Overview</div>
     <a href="/admin/dashboard" class="${activePage === 'dashboard' ? 'active' : ''}">📊 Dashboard</a>
     <a href="/admin/signups" class="${activePage === 'signups' ? 'active' : ''}">📧 Signups</a>
+    <a href="/admin/analytics" class="${activePage === 'analytics' ? 'active' : ''}">📈 Analytics</a>
     <div class="sidebar-section">Landing Pages</div>
     <a href="/admin/variants" class="${activePage === 'variants' ? 'active' : ''}">🧪 Variants & A/B Test</a>
     <div class="sidebar-section">Content</div>
@@ -76,6 +77,7 @@ module.exports = (title, content, activePage = '', opts = {}) => {
     <div class="sidebar-section">Growth</div>
     <a href="/admin/tracking" class="${activePage === 'tracking' ? 'active' : ''}">🔗 Tracking Links</a>
     <a href="/admin/events" class="${activePage === 'events' ? 'active' : ''}">📅 Events & Calendar</a>
+    <a href="/admin/geo-block" class="${activePage === 'geoblock' ? 'active' : ''}">🌍 Geo-Block</a>
     <div class="sidebar-section">Infrastructure</div>
     <a href="/admin/domains" class="${activePage === 'domains' ? 'active' : ''}">🌐 Domains</a>
     <a href="/" target="_blank" style="margin-top:16px">🌐 View Site</a>

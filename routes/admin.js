@@ -890,6 +890,7 @@ router.get('/tracking', requireAuth, async (req, res) => {
       <td style="font-size:12px;color:#64748b">${new Date(l.created_at).toLocaleDateString()}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${url}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+        <a href="/admin/tracking/${l.id}/stats" class="btn btn-ghost btn-sm">📊 Stats</a>
         <a href="/admin/tracking/${l.id}/edit" class="btn btn-ghost btn-sm">Edit</a>
         <form method="POST" action="/admin/tracking/${l.id}/delete" style="display:inline" onsubmit="return confirm('Delete?')"><button class="btn btn-danger btn-sm">Delete</button></form>
       </td>
@@ -930,6 +931,284 @@ router.post('/tracking', requireAuth, async (req, res) => {
   await supabase.from('tracking_links').insert({ slug: clean, name: name||null, destination: dest, link_mode: 'global', domain_id: req.currentDomainId });
   await addLinkToAdmin(adminId, clean);
   res.redirect('/admin/tracking?msg=added');
+});
+
+// ─── Analytics dashboard ─────────────────────────────────────────────────────
+router.get('/analytics', requireAuth, async (req, res) => {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+
+  const [{ data: visitors }, { data: signups }] = await Promise.all([
+    supabase.from('visitors').select('created_at, country, time_on_page, tracking_slug')
+      .gte('created_at', thirtyDaysAgo).limit(8000),
+    supabase.from('signups').select('signed_up_at, country, tracking_slug')
+      .gte('signed_up_at', thirtyDaysAgo).limit(8000),
+  ]);
+
+  // Build daily arrays (last 30 days)
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const vByDay = {}, sByDay = {};
+  days.forEach(d => { vByDay[d] = 0; sByDay[d] = 0; });
+  (visitors || []).forEach(v => { const d = (v.created_at || '').slice(0, 10); if (vByDay[d] !== undefined) vByDay[d]++; });
+  (signups || []).forEach(s => { const d = (s.signed_up_at || '').slice(0, 10); if (sByDay[d] !== undefined) sByDay[d]++; });
+  const dayData = days.map(d => ({ d, label: d.slice(5), v: vByDay[d], s: sByDay[d] }));
+  const maxV = Math.max(...dayData.map(d => d.v), 1);
+
+  // Country breakdown
+  const cMap = {};
+  (visitors || []).forEach(v => { if (v.country) cMap[v.country] = (cMap[v.country] || 0) + 1; });
+  const totalC = Object.values(cMap).reduce((a, b) => a + b, 0);
+  const topCountries = Object.entries(cMap).sort((a, b) => b[1] - a[1]).slice(0, 20)
+    .map(([code, n]) => ({ code, n, pct: totalC > 0 ? ((n / totalC) * 100).toFixed(1) : '0' }));
+
+  function flag(code) {
+    return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
+  }
+
+  // Avg time on page
+  const timeSamples = (visitors || []).filter(v => v.time_on_page > 0).map(v => v.time_on_page);
+  const avgTime = timeSamples.length > 0 ? Math.round(timeSamples.reduce((a, b) => a + b, 0) / timeSamples.length) : 0;
+  const avgMin = Math.floor(avgTime / 60), avgSec = avgTime % 60;
+
+  const totalV = visitors?.length || 0;
+  const totalS = signups?.length || 0;
+
+  const chartBars = dayData.map(d => `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0">
+      <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:120px;gap:1px">
+        <div title="${d.v} visits" style="width:100%;background:#7c3aed;height:${Math.max((d.v/maxV)*100,d.v>0?3:0)}%;border-radius:3px 3px 0 0;min-height:${d.v>0?2:0}px"></div>
+      </div>
+      <div style="font-size:8px;color:#475569;margin-top:4px;writing-mode:vertical-rl;transform:rotate(180deg);height:30px;overflow:hidden">${d.label}</div>
+    </div>`).join('');
+
+  const countryRows = topCountries.map(c => `
+    <tr>
+      <td>${flag(c.code)} ${c.code}</td>
+      <td>${c.n}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;background:#1e1e30;border-radius:4px;height:8px;overflow:hidden">
+            <div style="background:#7c3aed;height:100%;width:${c.pct}%;border-radius:4px"></div>
+          </div>
+          <span style="font-size:12px;color:#64748b;min-width:36px">${c.pct}%</span>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  res.send(layout('Analytics', `
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num">${totalV}</div><div class="stat-label">Visits (30d)</div></div>
+      <div class="stat"><div class="stat-num">${totalS}</div><div class="stat-label">Signups (30d)</div></div>
+      <div class="stat"><div class="stat-num">${totalV > 0 ? ((totalS / totalV) * 100).toFixed(1) : 0}%</div><div class="stat-label">CVR (30d)</div></div>
+      <div class="stat"><div class="stat-num">${avgMin}m ${avgSec}s</div><div class="stat-label">Avg Time on Page</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Daily Visitors — Last 30 Days</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;padding-bottom:8px">${chartBars}</div>
+      <div style="font-size:11px;color:#475569;margin-top:8px">Purple bars = page visits. Hover bar for count.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Visitor Locations</div>
+      ${topCountries.length ? `<table><thead><tr><th>Country</th><th>Visits</th><th>Share</th></tr></thead><tbody>${countryRows}</tbody></table>` : '<div class="empty">No location data yet — visits will populate here as traffic comes in.</div>'}
+    </div>
+  `, 'analytics'));
+});
+
+// ─── Geo-block settings ───────────────────────────────────────────────
+router.get('/geo-block', requireAuth, async (req, res) => {
+  const [modeRow, countriesRow, redirectRow] = await Promise.all([
+    supabase.from('settings').select('value').eq('key', 'geo_block_mode').single(),
+    supabase.from('settings').select('value').eq('key', 'geo_block_countries').single(),
+    supabase.from('settings').select('value').eq('key', 'geo_block_redirect').single(),
+  ]);
+  const mode = modeRow.data?.value || 'off';
+  const countries = countriesRow.data?.value ? JSON.parse(countriesRow.data.value) : [];
+  const redirect = redirectRow.data?.value || '';
+  const msg = req.query.msg;
+
+  res.send(layout('Geo-Block', `
+    ${msg === 'saved' ? '<div class="alert alert-success">✅ Geo-block settings saved.</div>' : ''}
+    <div class="card">
+      <div class="card-title">Global Geo-Blocking</div>
+      <p style="color:#64748b;font-size:13px;margin-bottom:20px">
+        Controls who can access your public pages based on country. Applies to all domains and tracking links globally.
+      </p>
+      <form method="POST" action="/admin/geo-block">
+        <div class="form-group">
+          <label>Mode</label>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:normal">
+              <input type="radio" name="mode" value="off" ${mode==='off'?'checked':''} style="width:auto;margin-top:2px">
+              <div><strong style="color:#e2e8f0">Off</strong> <span style="color:#64748b;font-size:13px">— no geo restrictions, everyone can visit</span></div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:normal">
+              <input type="radio" name="mode" value="allowlist" ${mode==='allowlist'?'checked':''} style="width:auto;margin-top:2px">
+              <div><strong style="color:#e2e8f0">Allowlist</strong> <span style="color:#64748b;font-size:13px">— only countries in the list below can visit; all others are blocked</span></div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:normal">
+              <input type="radio" name="mode" value="blocklist" ${mode==='blocklist'?'checked':''} style="width:auto;margin-top:2px">
+              <div><strong style="color:#e2e8f0">Blocklist</strong> <span style="color:#64748b;font-size:13px">— countries in the list below are blocked; everyone else can visit</span></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Country Codes <span style="font-weight:normal;color:#64748b">(comma-separated 2-letter codes, e.g. US, GB, CA, AU)</span></label>
+          <textarea name="countries" rows="4" placeholder="US, GB, CA, AU, NZ, DE, FR...">${countries.join(', ')}</textarea>
+          <div style="font-size:11px;color:#475569;margin-top:4px">Use ISO 3166-1 alpha-2 codes. Common: US, GB, CA, AU, NZ, DE, FR, IN, BR, MX, PH, NG, GH, ZA, SG, MY, ID</div>
+        </div>
+
+        <div class="form-group">
+          <label>Redirect URL <span style="font-weight:normal;color:#64748b">(optional — leave blank to show a "Not Available" page)</span></label>
+          <input type="text" name="redirect" value="${redirect}" placeholder="https://example.com/not-available">
+        </div>
+
+        <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+      </form>
+    </div>
+  `, 'geoblock'));
+});
+
+router.post('/geo-block', requireAuth, async (req, res) => {
+  const { mode, countries, redirect } = req.body;
+  const codes = (countries || '').split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(c => /^[A-Z]{2}$/.test(c));
+  await Promise.all([
+    supabase.from('settings').upsert({ key: 'geo_block_mode', value: mode || 'off', updated_at: new Date().toISOString() }),
+    supabase.from('settings').upsert({ key: 'geo_block_countries', value: JSON.stringify(codes), updated_at: new Date().toISOString() }),
+    supabase.from('settings').upsert({ key: 'geo_block_redirect', value: (redirect || '').trim(), updated_at: new Date().toISOString() }),
+  ]);
+  // Invalidate cache
+  try { require('./geo-block').invalidateGeoCache(); } catch {}
+  res.redirect('/admin/geo-block?msg=saved');
+});
+
+// ─── Tracking link stats ───────────────────────────────────────────────
+router.get('/tracking/:id/stats', requireAuth, async (req, res) => {
+  const { data: link } = await supabase.from('tracking_links').select('*').eq('id', req.params.id).single();
+  if (!link) return res.redirect('/admin/tracking');
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+
+  const [{ data: visitors }, { data: signups }, { data: events }] = await Promise.all([
+    supabase.from('visitors').select('created_at, country, time_on_page')
+      .eq('tracking_slug', link.slug).limit(5000),
+    supabase.from('signups').select('signed_up_at')
+      .eq('tracking_slug', link.slug),
+    supabase.from('page_events').select('event_type, element, value, created_at')
+      .eq('tracking_slug', link.slug).gte('created_at', thirtyDaysAgo).limit(5000),
+  ]);
+
+  const totalV = visitors?.length || 0;
+  const totalS = signups?.length || 0;
+  const cvr = totalV > 0 ? ((totalS / totalV) * 100).toFixed(1) : '0';
+
+  // Avg time on page
+  const times = (visitors || []).filter(v => v.time_on_page > 0).map(v => v.time_on_page);
+  const avgTime = times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+
+  // Country breakdown
+  const cMap = {};
+  (visitors || []).forEach(v => { if (v.country) cMap[v.country] = (cMap[v.country] || 0) + 1; });
+  const totalC = Object.values(cMap).reduce((a, b) => a + b, 0);
+  const topCountries = Object.entries(cMap).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([code, n]) => ({ code, n, pct: totalC > 0 ? ((n / totalC) * 100).toFixed(1) : '0' }));
+
+  function flag(code) {
+    return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
+  }
+
+  // Daily chart (last 30 days)
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const vByDay = {};
+  days.forEach(d => { vByDay[d] = 0; });
+  (visitors || []).filter(v => v.created_at >= thirtyDaysAgo)
+    .forEach(v => { const d = (v.created_at || '').slice(0, 10); if (vByDay[d] !== undefined) vByDay[d]++; });
+  const dayData = days.map(d => ({ d, label: d.slice(5), v: vByDay[d] }));
+  const maxV = Math.max(...dayData.map(d => d.v), 1);
+
+  // Click events breakdown
+  const clickMap = {};
+  const videoMap = {};
+  (events || []).forEach(e => {
+    if (e.event_type === 'click' || e.event_type === 'form_submit') {
+      const k = e.element || e.event_type;
+      clickMap[k] = (clickMap[k] || 0) + 1;
+    } else if (e.event_type === 'video') {
+      const k = e.element || 'video';
+      videoMap[k] = (videoMap[k] || 0) + 1;
+    }
+  });
+  const totalClicks = Object.values(clickMap).reduce((a, b) => a + b, 0);
+  const clickRows = Object.entries(clickMap).sort((a, b) => b[1] - a[1])
+    .map(([el, n]) => `<tr><td style="font-family:monospace;font-size:13px;color:#06b6d4">${el}</td><td>${n}</td><td>${totalV > 0 ? ((n / totalV) * 100).toFixed(1) + '%' : '—'}</td></tr>`).join('');
+
+  const videoProgressLabels = { video_play: '▶ Play', video_progress_10: '10%', video_progress_25: '25%', video_progress_50: '50%', video_progress_75: '75%', video_progress_90: '90%', video_end: '100% (completed)', video_iframe_click: 'Iframe click' };
+  const videoRows = Object.entries(videoMap).sort((a, b) => b[1] - a[1])
+    .map(([el, n]) => `<tr><td>${videoProgressLabels[el] || el}</td><td>${n}</td><td>${totalV > 0 ? ((n / totalV) * 100).toFixed(1) + '%' : '—'}</td></tr>`).join('');
+
+  const chartBars = dayData.map(d => `
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0">
+      <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:80px">
+        <div title="${d.v} visits" style="width:100%;background:#7c3aed;height:${Math.max((d.v/maxV)*100,d.v>0?4:0)}%;border-radius:3px 3px 0 0;min-height:${d.v>0?2:0}px"></div>
+      </div>
+      <div style="font-size:7px;color:#475569;margin-top:3px;writing-mode:vertical-rl;transform:rotate(180deg);height:26px">${d.label}</div>
+    </div>`).join('');
+
+  const countryRows = topCountries.map(c => `
+    <tr>
+      <td>${flag(c.code)} ${c.code}</td>
+      <td>${c.n}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;background:#1e1e30;border-radius:4px;height:6px">
+            <div style="background:#7c3aed;height:100%;width:${c.pct}%;border-radius:4px"></div>
+          </div>
+          <span style="font-size:12px;color:#64748b">${c.pct}%</span>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  const avgMin = Math.floor(avgTime / 60), avgSec = avgTime % 60;
+
+  res.send(layout(`Stats: /r/${link.slug}`, `
+    <div style="margin-bottom:16px"><a href="/admin/tracking" class="btn btn-ghost btn-sm">← Back to Links</a></div>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num">${totalV}</div><div class="stat-label">Total Visits</div></div>
+      <div class="stat"><div class="stat-num">${totalS}</div><div class="stat-label">Signups</div></div>
+      <div class="stat"><div class="stat-num">${cvr}%</div><div class="stat-label">CVR</div></div>
+      <div class="stat"><div class="stat-num">${avgMin}m ${avgSec}s</div><div class="stat-label">Avg Time on Page</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Daily Visits — Last 30 Days</div>
+      <div style="display:flex;align-items:flex-end;gap:2px">${chartBars}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div class="card-title">Visitor Locations</div>
+        ${topCountries.length ? `<table><thead><tr><th>Country</th><th>Visits</th><th>Share</th></tr></thead><tbody>${countryRows}</tbody></table>` : '<div class="empty" style="padding:20px">No location data yet</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title">Click Breakdown</div>
+        ${clickRows ? `<table><thead><tr><th>Element</th><th>Clicks</th><th>% of Visits</th></tr></thead><tbody>${clickRows}</tbody></table>` : '<div class="empty" style="padding:20px">No click data yet — tracking JS must be deployed first</div>'}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Video Engagement</div>
+      ${videoRows ? `<p style="color:#64748b;font-size:13px;margin-bottom:12px">Shows what % of visitors reached each video milestone on this page.</p><table><thead><tr><th>Milestone</th><th>Count</th><th>% of Visits</th></tr></thead><tbody>${videoRows}</tbody></table>` : '<div class="empty">No video data yet — visitors haven\'t played the video or tracking is not yet deployed.</div>'}
+    </div>
+  `, 'tracking'));
 });
 
 // Edit tracking link page

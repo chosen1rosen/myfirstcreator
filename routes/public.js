@@ -21,6 +21,17 @@ async function getCountry(ip) {
   return null;
 }
 
+async function getCountryCode(ip) {
+  if (!ip || ip === 'unknown' || ip === '::1' || ip.startsWith('127.') ||
+      ip.startsWith('192.168.') || ip.startsWith('10.')) return null;
+  try {
+    const r = await fetch(`http://ip-api.com/json/${ip}?fields=countryCode`,
+      { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    return d.countryCode || null;
+  } catch { return null; }
+}
+
 function getIP(req) {
   return (
     req.headers['cf-connecting-ip'] ||
@@ -259,6 +270,38 @@ router.post('/api/signup', async (req, res) => {
   }
 });
 
+// Track page event (click, form submit, video progress)
+router.post('/api/track/event', async (req, res) => {
+  try {
+    const { sid, slug, variantId, type, element, value } = req.body;
+    if (!sid || !type) return res.status(400).end();
+    await supabase.from('page_events').insert({
+      session_id: sid,
+      tracking_slug: slug || null,
+      variant_id: variantId ? parseInt(variantId) : null,
+      event_type: type,
+      element: element || null,
+      value: (value || '').slice(0, 200),
+      ip: getIP(req),
+    });
+    res.json({ ok: true });
+  } catch { res.status(500).end(); }
+});
+
+// Track time-on-page (called on exit via sendBeacon)
+router.post('/api/track/time', async (req, res) => {
+  try {
+    const { sid, secs } = req.body;
+    if (!sid || !secs || isNaN(secs)) return res.status(400).end();
+    const seconds = Math.min(parseInt(secs), 7200); // cap at 2hrs
+    await supabase.from('visitors')
+      .update({ time_on_page: seconds })
+      .eq('session_id', sid)
+      .is('time_on_page', null);
+    res.json({ ok: true });
+  } catch { res.status(500).end(); }
+});
+
 // AddCal public API — active event links
 router.get('/api/addcal/event', async (req, res) => {
   try {
@@ -365,10 +408,25 @@ async function serveVariant(req, res, next, variantId, trackingSlug) {
 
     const ip = getIP(req);
     const slug = trackingSlug || req.cookies?.mfc_ref || null;
-    await supabase.from('visitors').insert({ tracking_slug: slug, ip, user_agent: req.headers['user-agent'] || '', variant_id: variantId });
+    const visitSid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+    // Insert visitor record with session_id (non-blocking country lookup)
+    await supabase.from('visitors').insert({
+      session_id: visitSid,
+      tracking_slug: slug,
+      ip,
+      user_agent: req.headers['user-agent'] || '',
+      variant_id: variantId,
+    });
+    getCountryCode(ip).then(code => {
+      if (code) supabase.from('visitors').update({ country: code })
+        .eq('session_id', visitSid).then(() => {});
+    }).catch(() => {});
+
     res.cookie('mfc_variant', String(variantId), { maxAge: 2 * 60 * 60 * 1000, httpOnly: true });
 
-    const { data: testimonials } = await supabase.from('testimonials').select('*').eq('active', true).order('sort_order').limit(50);
+    const { data: testimonials } = await supabase.from('testimonials').select('*')
+      .eq('active', true).order('sort_order').limit(50);
     let vslData = null;
     if (variant.vsl_id) {
       const { data: vsl } = await supabase.from('vsls').select('*').eq('id', variant.vsl_id).single();
@@ -379,9 +437,9 @@ async function serveVariant(req, res, next, variantId, trackingSlug) {
     } else if (variant.page_mode === 'custom' && variant.custom_html) {
       res.send(variant.custom_html);
     } else if (variant.page_mode === 'builder' && variant.blocks?.length > 0) {
-      res.send(renderPageFromBlocks(variant.blocks, testimonials || []));
+      res.send(renderPageFromBlocks(variant.blocks, testimonials || [], false, visitSid));
     } else {
-      res.send(renderLandingPage(variant, testimonials || [], false, vslData));
+      res.send(renderLandingPage(variant, testimonials || [], false, vslData, visitSid));
     }
   } catch (err) {
     console.error('Variant render error:', err);

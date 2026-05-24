@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const supabase = require('../db');
+const Mux = require('@mux/mux-node');
+const muxClient = new Mux({ tokenId: process.env.MUX_TOKEN_ID, tokenSecret: process.env.MUX_TOKEN_SECRET });
 const layout = require('./admin-layout');
 const { getAdminAccounts, getAdminOwners, getAdminVariantIds, getAdminLinkSlugs, addLinkToAdmin, removeLinkFromAdmin, scopeDomain } = require('./admin-utils');
 const { router: variantsRouter } = require('./admin-variants');
@@ -348,6 +350,48 @@ router.post('/vsl/confirm', requireAuth, async (req, res) => {
   res.json({ success: true, vsl });
 });
 
+// VSL: Mux — create direct upload URL
+router.post('/vsl/mux-init', requireAuth, async (req, res) => {
+  try {
+    const upload = await muxClient.video.uploads.create({
+      cors_origin: '*',
+      new_asset_settings: { playback_policy: ['public'] },
+    });
+    res.json({ uploadId: upload.id, uploadUrl: upload.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// VSL: Mux — poll for asset readiness and confirm
+router.post('/vsl/mux-confirm', requireAuth, async (req, res) => {
+  const { uploadId, name } = req.body;
+  if (!uploadId) return res.status(400).json({ error: 'uploadId required' });
+  try {
+    // Retrieve upload to get asset_id
+    const upload = await muxClient.video.uploads.retrieve(uploadId);
+    const assetId = upload.asset_id;
+    if (!assetId) return res.json({ ready: false });
+
+    const asset = await muxClient.video.assets.retrieve(assetId);
+    if (asset.status !== 'ready') return res.json({ ready: false, status: asset.status });
+
+    const playbackId = asset.playback_ids?.[0]?.id;
+    if (!playbackId) return res.status(500).json({ error: 'No playback ID on asset' });
+
+    const autoName = name || `Mux Video ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+    const { data: vsl, error } = await supabase.from('vsls').insert({
+      name: autoName,
+      type: 'mux',
+      url: playbackId,
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ready: true, vsl, playbackId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // VSL: add URL type to library
 router.post('/vsl/add-url', requireAuth, async (req, res) => {
   const { name, url } = req.body;
@@ -387,10 +431,13 @@ router.get('/vsl', requireAuth, async (req, res) => {
   const msg = req.query.msg;
 
   const cards = (vsls || []).map(v => {
+    const isMux = v.type === 'mux';
     const isFile = v.type === 'file';
-    const badgeClass = isFile ? 'badge-purple' : 'badge-gray';
-    const badgeLabel = isFile ? 'file' : 'url';
-    const preview = isFile
+    const badgeClass = isMux ? 'badge-green' : isFile ? 'badge-purple' : 'badge-gray';
+    const badgeLabel = isMux ? '⚡ mux' : isFile ? 'file' : 'url';
+    const preview = isMux
+      ? `<div style="width:100%;height:80px;background:linear-gradient(135deg,#0d1117,#1a1a2e);border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px"><img src="https://image.mux.com/${v.url}/thumbnail.jpg?width=320&time=1" style="height:80px;width:100%;object-fit:cover;border-radius:8px" onerror="this.style.display='none'"></div>`
+      : isFile
       ? `<div style="width:100%;height:80px;background:#0d0d14;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px"><span style="font-size:32px">🎬</span></div>`
       : `<div style="width:100%;height:80px;background:#0d0d14;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px"><span style="font-size:32px">🔗</span></div>`;
     const created = new Date(v.created_at).toLocaleDateString();
@@ -432,6 +479,7 @@ router.get('/vsl', requireAuth, async (req, res) => {
       <div style="display:flex;gap:0;border-bottom:1px solid #1e1e30;margin-bottom:20px">
         <button class="tab-btn active" id="tab-url-btn" onclick="switchTab('url')" style="background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed">🔗 URL (YouTube/Vimeo)</button>
         <button class="tab-btn" id="tab-upload-btn" onclick="switchTab('upload')" style="background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent">📁 Upload File</button>
+        <button class="tab-btn" id="tab-mux-btn" onclick="switchTab('mux')" style="background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent">⚡ Mux (No Buffering)</button>
       </div>
 
       <!-- URL Tab -->
@@ -461,14 +509,103 @@ router.get('/vsl', requireAuth, async (req, res) => {
         <button class="btn btn-primary" id="upload-btn" onclick="doUpload()">Upload & Add to Library</button>
         <div id="upload-result" style="margin-top:12px"></div>
       </div>
+
+      <!-- Mux Tab -->
+      <div id="tab-mux" style="display:none">
+        <div style="background:#0d1117;border:1px solid #2d2d4a;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:#94a3b8;line-height:1.6">
+          ⚡ <strong style="color:#a78bfa">Mux streaming</strong> — your video is transcoded to adaptive HLS. It never buffers on slow connections and starts playing instantly.
+        </div>
+        <div class="form-group"><label>Name</label><input type="text" id="mux-name" placeholder="e.g. Main VSL (Mux)"></div>
+        <div class="form-group">
+          <label>Video File</label>
+          <input type="file" id="mux-file" accept="video/*" onchange="muxFileChosen(this)">
+          <div id="mux-file-label" style="font-size:13px;color:#94a3b8;margin-top:6px"></div>
+        </div>
+        <div id="mux-progress-wrap" style="display:none;margin-bottom:16px">
+          <div style="font-size:13px;color:#94a3b8;margin-bottom:8px" id="mux-status">Uploading to Mux...</div>
+          <div style="background:#1a1a2e;border-radius:999px;height:10px;overflow:hidden">
+            <div id="mux-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#06b6d4);transition:width 0.3s;border-radius:999px"></div>
+          </div>
+          <div id="mux-pct" style="font-size:12px;color:#64748b;margin-top:6px">0%</div>
+        </div>
+        <button class="btn btn-primary" id="mux-upload-btn" onclick="doMuxUpload()">⚡ Upload to Mux</button>
+        <div id="mux-result" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <script>
     function switchTab(tab) {
       document.getElementById('tab-url').style.display = tab === 'url' ? '' : 'none';
       document.getElementById('tab-upload').style.display = tab === 'upload' ? '' : 'none';
-      document.getElementById('tab-url-btn').style.cssText = tab === 'url' ? 'background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed' : 'background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent';
-      document.getElementById('tab-upload-btn').style.cssText = tab === 'upload' ? 'background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed' : 'background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent';
+      document.getElementById('tab-mux').style.display = tab === 'mux' ? '' : 'none';
+      var active = 'background:none;border:none;padding:10px 20px;color:#a78bfa;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed';
+      var inactive = 'background:none;border:none;padding:10px 20px;color:#64748b;font-size:14px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent';
+      document.getElementById('tab-url-btn').style.cssText = tab === 'url' ? active : inactive;
+      document.getElementById('tab-upload-btn').style.cssText = tab === 'upload' ? active : inactive;
+      document.getElementById('tab-mux-btn').style.cssText = tab === 'mux' ? active : inactive;
+    }
+    function muxFileChosen(input) {
+      if (input.files[0]) document.getElementById('mux-file-label').textContent = 'Selected: ' + input.files[0].name + ' (' + Math.round(input.files[0].size/1024/1024) + 'MB)';
+    }
+    async function doMuxUpload() {
+      const file = document.getElementById('mux-file').files[0];
+      if (!file) { alert('Please select a file first.'); return; }
+      const nameVal = document.getElementById('mux-name').value.trim();
+      const btn = document.getElementById('mux-upload-btn');
+      btn.disabled = true; btn.textContent = 'Uploading...';
+      document.getElementById('mux-progress-wrap').style.display = '';
+      document.getElementById('mux-status').textContent = 'Creating Mux upload...';
+      try {
+        // Step 1: get Mux direct upload URL
+        const initRes = await fetch('/admin/vsl/mux-init', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({}) });
+        const init = await initRes.json();
+        if (init.error) throw new Error(init.error);
+        // Step 2: PUT file directly to Mux
+        document.getElementById('mux-status').textContent = 'Uploading to Mux...';
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = function(e) {
+          if (e.lengthComputable) {
+            const pct = Math.round(e.loaded / e.total * 100);
+            document.getElementById('mux-bar').style.width = pct + '%';
+            document.getElementById('mux-pct').textContent = pct + '%';
+            document.getElementById('mux-status').textContent = 'Uploading to Mux... ' + pct + '%';
+          }
+        };
+        await new Promise(function(resolve, reject) {
+          xhr.open('PUT', init.uploadUrl);
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+          xhr.onload = function() { if (xhr.status < 400) resolve(); else reject(new Error('Upload failed: ' + xhr.status)); };
+          xhr.onerror = function() { reject(new Error('Network error')); };
+          xhr.send(file);
+        });
+        document.getElementById('mux-bar').style.width = '100%';
+        document.getElementById('mux-pct').textContent = '100%';
+        document.getElementById('mux-status').textContent = 'Mux is transcoding... checking readiness';
+        // Step 3: Poll until asset ready (up to 5 min)
+        let attempts = 0;
+        const poll = async function() {
+          attempts++;
+          const confRes = await fetch('/admin/vsl/mux-confirm', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ uploadId: init.uploadId, name: nameVal }) });
+          const conf = await confRes.json();
+          if (conf.error) throw new Error(conf.error);
+          if (!conf.ready) {
+            if (attempts > 60) throw new Error('Mux transcoding timed out. Check your Mux dashboard.');
+            document.getElementById('mux-status').textContent = 'Transcoding... (' + Math.round(attempts * 5) + 's elapsed)';
+            await new Promise(function(r){ setTimeout(r, 5000); });
+            return poll();
+          }
+          return conf;
+        };
+        const conf = await poll();
+        document.getElementById('mux-status').textContent = '\u2705 Ready!';
+        document.getElementById('mux-result').innerHTML = '<div class="alert alert-success">\u2705 Mux VSL added: <strong>' + (conf.vsl?.name || 'Video') + '</strong><br><span style="font-size:12px;color:#64748b">Playback ID: ' + conf.playbackId + '</span></div>';
+        btn.disabled = false; btn.textContent = '\u26a1 Upload to Mux';
+        setTimeout(function(){ location.reload(); }, 2000);
+      } catch(err) {
+        document.getElementById('mux-status').textContent = '\u274c ' + err.message;
+        document.getElementById('mux-result').innerHTML = '<div class="alert alert-error">Upload failed: ' + err.message + '</div>';
+        btn.disabled = false; btn.textContent = '\u26a1 Upload to Mux';
+      }
     }
     function fileChosen(input) {
       if (input.files[0]) {

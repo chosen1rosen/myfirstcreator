@@ -82,6 +82,37 @@ function renderHero(b) {
 }
 
 function renderVSL(b) {
+  // ── Mux HLS path ──
+  const muxId = b.mux_playback_id || (b.vsl_type === 'mux' ? b.vsl_url : null) || (b.type === 'mux' ? b.vsl_url : null);
+  if (muxId && !muxId.startsWith('http')) {
+    const uid = 'mux_' + Math.random().toString(36).slice(2, 8);
+    const hlsSrc = `https://stream.mux.com/${muxId}.m3u8`;
+    const posterSrc = `https://image.mux.com/${muxId}/thumbnail.jpg?width=1280&time=1`;
+    return `
+  <section class="block-vsl" style="padding:48px 0;background:rgba(124,58,237,.04);border-top:1px solid #1e1e30;border-bottom:1px solid #1e1e30">
+    <style>.vsl-wrap{position:relative;padding-bottom:56.25%;height:0;border-radius:16px;overflow:hidden;box-shadow:0 0 60px rgba(124,58,237,.2)}.vsl-wrap video{position:absolute;top:0;left:0;width:100%;height:100%;border:none}@media(max-width:768px){.block-vsl{padding:0}.vsl-wrap{border-radius:0;box-shadow:none}}</style>
+    <div class="container" style="padding:0 20px">
+      ${b.caption ? `<p style="text-align:center;color:#94a3b8;margin-bottom:20px;font-size:15px">${b.caption}</p>` : ''}
+      <div class="vsl-wrap">
+        <video id="${uid}" controls playsinline poster="${posterSrc}" style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000"></video>
+      </div>
+    </div>
+  </section>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"><\/script>
+  <script>(function(){
+    var video = document.getElementById('${uid}');
+    var src = '${hlsSrc}';
+    if (!video) return;
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      var hls = new Hls({ maxBufferLength: 60, maxMaxBufferLength: 120 });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+    }
+  })();<\/script>`;
+  }
+
   if (!b.vsl_file && !b.vsl_url) return '';
   const isFile = !!b.vsl_file;
   const src = b.vsl_file || b.vsl_url;

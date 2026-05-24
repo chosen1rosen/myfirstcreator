@@ -374,11 +374,15 @@
       }
       blocks[i].vsl_library_id = vslId ? parseInt(vslId) : null;
       if (libVsl) {
-        blocks[i].vsl_file = libVsl.file_path || '';
-        blocks[i].vsl_url = libVsl.url || '';
+        blocks[i].vsl_type = libVsl.type || 'file';
+        blocks[i].vsl_file = libVsl.type === 'file' ? (libVsl.file_path || '') : '';
+        blocks[i].vsl_url = libVsl.type !== 'file' ? (libVsl.url || '') : '';
+        blocks[i].mux_playback_id = libVsl.type === 'mux' ? (libVsl.url || '') : '';
       } else {
+        blocks[i].vsl_type = '';
         blocks[i].vsl_file = '';
         blocks[i].vsl_url = '';
+        blocks[i].mux_playback_id = '';
       }
       dirty = true; markUnsaved(); debouncePreview();
     }
@@ -612,8 +616,10 @@
           const libVsl = VSL_LIBRARY.find(v => String(v.id) === String(vslId));
           const resolvedUrl = libVsl ? (libVsl.url || libVsl.file_path || '') : '';
           blocks[vslBlockIdx].vsl_library_id = parseInt(vslId);
+          blocks[vslBlockIdx].vsl_type = libVsl ? (libVsl.type || 'file') : '';
           blocks[vslBlockIdx].vsl_url = libVsl && libVsl.type === 'url' ? resolvedUrl : '';
           blocks[vslBlockIdx].vsl_file = libVsl && libVsl.type === 'file' ? resolvedUrl : '';
+          blocks[vslBlockIdx].mux_playback_id = libVsl && libVsl.type === 'mux' ? resolvedUrl : '';
         } else if (vslUrl) {
           blocks[vslBlockIdx].vsl_library_id = null;
           blocks[vslBlockIdx].vsl_url = vslUrl;

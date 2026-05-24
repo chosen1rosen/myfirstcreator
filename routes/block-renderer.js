@@ -5,6 +5,7 @@ const BLOCK_TYPES = [
   { type: 'vsl',           label: '🎬 Video (VSL)' },
   { type: 'email_capture', label: '📧 Email Capture Form' },
   { type: 'testimonials',  label: '💬 Testimonials' },
+  { type: 'screenshot_testimonials', label: '📸 Screenshot Testimonials' },
   { type: 'features',      label: '⚡ Features Grid' },
   { type: 'image_text',    label: '🖼️ Image + Text' },
   { type: 'cta_banner',    label: '🚀 CTA Banner' },
@@ -40,6 +41,7 @@ function renderBlock(block, testimonialData = []) {
     case 'vsl': return renderVSL(block);
     case 'email_capture': return renderEmailCapture(block);
     case 'testimonials': return renderTestimonials(block, testimonialData);
+    case 'screenshot_testimonials': return renderScreenshotTestimonials(block);
     case 'features': return renderFeatures(block);
     case 'image_text': return renderImageText(block);
     case 'cta_banner': return renderCTABanner(block);
@@ -289,6 +291,39 @@ return `<div class="testimonial-card tg-card"><script async src="https://telegra
     requestAnimationFrame(initCarousel);
   })();
   <\/script>`;
+}
+
+function renderScreenshotTestimonials(b) {
+  const items = b.items || [];
+  const blockId = 'sst-' + Math.random().toString(36).slice(2, 8);
+
+  if (!items.length) return `
+  <section style="padding:72px 20px;background:#0d0d14">
+    <div class="container">
+      ${b.label ? `<div class="section-label" style="text-align:center;margin-bottom:12px">${b.label}</div>` : ''}
+      ${b.title ? `<h2 style="text-align:center;font-size:clamp(24px,4vw,36px);font-weight:700;margin-bottom:32px">${b.title}</h2>` : ''}
+      <p style="text-align:center;color:#475569">No testimonial screenshots added yet.</p>
+    </div>
+  </section>`;
+
+  const cards = items.filter(item => item.image_url).map(item => `
+  <div style="background:#12121f;border:1px solid #1e1e30;border-radius:16px;overflow:hidden">
+    <img src="${item.image_url}" alt="Testimonial" style="width:100%;display:block;${item.caption ? 'border-radius:16px 16px 0 0' : 'border-radius:16px'}">
+    ${item.caption ? `<div style="padding:12px 14px;font-size:13px;color:#94a3b8;line-height:1.5">${item.caption}</div>` : ''}
+  </div>`).join('');
+
+  return `
+  <style>
+  #${blockId}-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:900px;margin:0 auto}
+  @media(max-width:640px){#${blockId}-grid{grid-template-columns:1fr}}
+  </style>
+  <section style="padding:72px 20px;background:#0d0d14">
+    <div class="container">
+      ${b.label ? `<div class="section-label" style="text-align:center;margin-bottom:12px">${b.label}</div>` : ''}
+      ${b.title ? `<h2 style="text-align:center;font-size:clamp(24px,4vw,36px);font-weight:700;margin-bottom:32px">${b.title}</h2>` : ''}
+      <div id="${blockId}-grid">${cards}</div>
+    </div>
+  </section>`;
 }
 
 function renderFeatures(b) {

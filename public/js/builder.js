@@ -13,6 +13,7 @@
       vsl: { type:'vsl', vsl_url:'', vsl_file:'', caption:'' },
       email_capture: { type:'email_capture', title:'Claim Your Free Spot', subtitle:'Enter your details to get instant access', cta_text:'Get Instant Access →', label:'🎟️ Free Training', show_name:true, name_placeholder:'Your first name', email_placeholder:'Your email address', bg_color:'transparent', cta_destination:'signup', cta_link:'' },
       testimonials: { type:'testimonials', title:'Real Results From Real People', label:'💬 What They Say', layout:'grid', limit:6 },
+      screenshot_testimonials: { type:'screenshot_testimonials', title:'Real Results From Real People', label:'📸 Community Wins', items:[] },
       video_testimonials: { type:'video_testimonials', headline:'What Our Students Are Saying', subheadline:'Join thousands of creators building real income streams.', cta_text:'Claim Your Free Spot →', cta_url:'#signup', count:0 },
       features: { type:'features', title:'Why This Works', subtitle:'', label:'⚡ The Platform', columns:3, items:[{icon:'🤖',title:'AI Creator Tech',description:'Built-in AI technology that runs 24/7'},{icon:'💰',title:'60% Revenue Share',description:'You keep the majority of everything earned'},{icon:'📈',title:'Built-in Audience',description:'Traffic and distribution already set up'}] },
       image_text: { type:'image_text', title:'Your Title', body:'Your description text goes here.', cta_text:'', image_url:'', image_side:'left', label:'', cta_destination:'signup', cta_link:'' },
@@ -203,6 +204,7 @@
         case 'vsl': return renderVslBlockForm(b, i);
         case 'email_capture': { var isLink = b.cta_destination === 'link'; return f('title','Title') + (!isLink ? f('subtitle','Subtitle') : '') + f('cta_text','Button Text') + ctaDest(b, i) + f('label','Section Label (optional)') + (!isLink ? chk('show_name','Show name field') + f('name_placeholder','Name Placeholder','text') + f('email_placeholder','Email Placeholder','text') : '') + f('bg_color','Background Color','text','placeholder="transparent"'); }
         case 'testimonials': return f('title','Section Title') + f('label','Section Label') + sel('layout','Layout',[{v:'grid',l:'Grid'},{v:'list',l:'List'}]) + f('limit','Max Testimonials to Show','number');
+        case 'screenshot_testimonials': return renderScreenshotTestimonialsForm(b, i);
         case 'video_testimonials': return f('headline','Top Headline') + f('subheadline','Subheadline Below Carousel') + f('cta_text','CTA Button Text') + f('cta_url','CTA Button URL','text','placeholder="#signup or https://..."') + f('count','Max Videos to Show (0 = all)','number');
         case 'features': return f('title','Section Title') + f('subtitle','Subtitle') + f('label','Section Label') + sel('columns','Columns',[{v:2,l:'2 Columns'},{v:3,l:'3 Columns'},{v:4,l:'4 Columns'}]) + renderFeatureItems(b, i);
         case 'image_text': return f('title','Title') + ta('body','Body Text') + f('cta_text','CTA Button (optional)') + ctaDest(b, i) + f('image_url','Image URL') + sel('image_side','Image Position',[{v:'left',l:'Image Left'},{v:'right',l:'Image Right'}]) + f('label','Label (optional)');
@@ -307,6 +309,76 @@
     function removeMpPlan(blockIdx, planIdx) {
       if (!blocks[blockIdx].plans) return;
       blocks[blockIdx].plans.splice(planIdx, 1);
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+
+    function triggerScreenshotUpload(blockIdx, itemIdx, labelId) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = function() {
+        var file = input.files[0];
+        if (!file) return;
+        var label = document.getElementById(labelId);
+        if (label) label.textContent = 'Uploading 0%...';
+        uploadBuilderMedia(
+          file,
+          function(pct) { if (label) label.textContent = 'Uploading ' + pct + '%...'; },
+          function(url) {
+            if (label) label.textContent = '\u2705 Uploaded';
+            updateScreenshotItem(blockIdx, itemIdx, 'image_url', url);
+            render();
+            debouncePreview();
+          },
+          function(err) { if (label) label.textContent = '\u274c ' + err; }
+        );
+      };
+      input.click();
+    }
+
+    function renderScreenshotTestimonialsForm(b, i) {
+      var items = b.items || [];
+      var rows = items.map(function(item, j) {
+        var hasImage = item.image_url && item.image_url.length > 0;
+        return '<div style="background:#0d0d14;border:1px solid #2d2d4a;border-radius:8px;padding:12px;margin-bottom:8px">'
+          + '<div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:8px">SCREENSHOT ' + (j+1)
+          + ' <button onclick="removeScreenshotItem(' + i + ',' + j + ')" style="float:right;background:none;border:none;color:#7f1d1d;cursor:pointer;font-size:11px">✕ Remove</button></div>'
+          + (hasImage ? '<div style="margin-bottom:8px"><img src="' + item.image_url + '" style="width:100%;border-radius:6px;max-height:120px;object-fit:cover"></div>' : '')
+          + '<div class="field"><label>Screenshot Image</label>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+          + '<input type="text" value="' + esc(item.image_url||'') + '" onchange="updateScreenshotItem(' + i + ',' + j + ',\'image_url\',this.value)" placeholder="https://... or upload \u2192" style="flex:1">'
+          + '<button onclick="triggerScreenshotUpload(' + i + ',' + j + ',\'sst_lbl_' + i + '_' + j + '\')" style="background:#1e1e35;border:1px solid #2d2d4a;color:#a78bfa;padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap">📤 Upload</button>'
+          + '</div>'
+          + '<div id="sst_lbl_' + i + '_' + j + '" style="font-size:11px;color:#64748b;margin-top:4px"></div>'
+          + '</div>'
+          + '<div class="field"><label>Caption (optional)</label>'
+          + '<input type="text" value="' + esc(item.caption||'') + '" onchange="updateScreenshotItem(' + i + ',' + j + ',\'caption\',this.value)" placeholder="Add a caption...">'
+          + '</div>'
+          + '</div>';
+      }).join('');
+      return '<div class="field"><label>Section Title</label><input type="text" value="' + esc(b.title||'') + '" onchange="updateField(' + i + ',\'title\',this.value)"></div>'
+        + '<div class="field"><label>Section Label (optional)</label><input type="text" value="' + esc(b.label||'') + '" onchange="updateField(' + i + ',\'label\',this.value)"></div>'
+        + '<div style="margin-top:12px">'
+        + '<div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:8px">Screenshots (' + items.length + ' added \u2014 2-per-row desktop, 1-per-row mobile)</div>'
+        + rows
+        + '<button onclick="addScreenshotItem(' + i + ')" class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px">+ Add Screenshot</button>'
+        + '</div>';
+    }
+
+    function updateScreenshotItem(blockIdx, itemIdx, key, val) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      if (!blocks[blockIdx].items[itemIdx]) blocks[blockIdx].items[itemIdx] = {};
+      blocks[blockIdx].items[itemIdx][key] = val;
+      dirty = true; markUnsaved(); debouncePreview();
+    }
+    function addScreenshotItem(blockIdx) {
+      if (!blocks[blockIdx].items) blocks[blockIdx].items = [];
+      blocks[blockIdx].items.push({ image_url: '', caption: '' });
+      dirty = true; markUnsaved(); render(); debouncePreview();
+    }
+    function removeScreenshotItem(blockIdx, itemIdx) {
+      if (!blocks[blockIdx].items) return;
+      blocks[blockIdx].items.splice(itemIdx, 1);
       dirty = true; markUnsaved(); render(); debouncePreview();
     }
 

@@ -223,17 +223,27 @@ router.post('/api/marketplace/lead', async (req, res) => {
     });
   }
 
+  // Fetch the marketplace site token (same source as marketplace-renderer.js)
+  let mpToken = process.env.MARKETPLACE_SITE_TOKEN || null;
+  if (!mpToken) {
+    const { data: tokenRow } = await supabase.from('settings').select('value').eq('key', 'marketplace_site_token').single();
+    mpToken = tokenRow?.value || null;
+  }
+
   // Forward to marketplace API (best-effort — don't fail the user if it errors)
   let mpResult = { forwarded: false };
   try {
+    const mpHeaders = { 'Content-Type': 'application/json' };
+    if (mpToken) mpHeaders['Authorization'] = `Bearer ${mpToken}`;
     const mpRes = await fetch('https://api.aicreatormarketplace.com/leads', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: mpHeaders,
       body: JSON.stringify({ email: cleanEmail, campaign_id, source }),
       signal: AbortSignal.timeout(8000),
     });
     const mpData = await mpRes.json().catch(() => ({}));
     mpResult = { forwarded: true, status: mpRes.status, ...mpData };
+    if (!mpRes.ok) console.error('Marketplace API lead forward non-OK:', mpRes.status, mpData);
   } catch (err) {
     console.error('Marketplace API forward error:', err.message);
   }

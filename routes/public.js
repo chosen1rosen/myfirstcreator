@@ -235,7 +235,7 @@ router.post('/api/marketplace/lead', async (req, res) => {
   try {
     const mpHeaders = { 'Content-Type': 'application/json' };
     if (mpToken) mpHeaders['Authorization'] = `Bearer ${mpToken}`;
-    const mpRes = await fetch('https://api.aicreatormarketplace.com/leads', {
+    const mpRes = await fetch('https://api.aicreatormarketplace.com/whitelabel/v1/leads', {
       method: 'POST',
       headers: mpHeaders,
       body: JSON.stringify({ email: cleanEmail, campaign_id, source }),
